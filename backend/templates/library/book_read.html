@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if translation %}{{ translation.title }}{% else %}Book{% endif %}{% endblock %}
+{% block meta_description %}{% if translation %}{{ translation.summary|truncatewords:28 }}{% else %}Read on Luma Library.{% endif %}{% endblock %}
+
+{% if translation %}{% block body_class %}reader-mode{% endblock %}{% endif %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Literata:opsz,wght@7..72,400;7..72,500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'library/css/library.css' %}">
+<link rel="stylesheet" href="{% static 'library/css/reader.css' %}">
+{% endblock %}
+
+{% block wordmark_href %}{% url 'library:catalog' %}{% endblock %}
+
+{% block nav_center %}{% endblock %}
+
+{% block nav_status %}{% endblock %}
+
+{% block nav_action %}{% endblock %}
+
+{% block content %}
+{% if not translation %}
+<section class="library-empty">
+    <div class="library-empty__panel">
+        <h1 class="library-empty__title">Translation unavailable</h1>
+        <p class="library-empty__copy">This book has no readable content yet.</p>
+        <a class="library-empty__cta" href="{% url 'library:catalog' %}">Return to library</a>
+    </div>
+</section>
+{% else %}
+{{ audio_sync|json_script:"audio-sync-data" }}
+<div
+    class="book-reader"
+    id="book-reader"
+    lang="uz"
+    data-slug="{{ book.slug }}"
+    data-title="{{ translation.title }}"
+    data-author="{{ book.author_name }}"
+    data-category="{{ book.get_category_display }}"
+    data-year="{% if book.published_year %}{{ book.published_year }}{% endif %}"
+    data-catalog-url="{% url 'library:catalog' %}"
+    data-detail-url="{% url 'library:book-detail' slug=book.slug %}"
+    data-pdf-url="{{ pdf_url }}"
+    data-audio-url="{{ audio_url }}"
+    data-pdf-worker-src="{% static 'library/js/pdf.worker.min.mjs' %}"
+    {% if audio_url %}data-sentence-wrap="true"{% endif %}
+>
+    <div id="book-source" class="book-reader__source visually-hidden" aria-hidden="true">
+        {{ translation.body|linebreaks }}
+    </div>
+
+    <div class="book-reader__stage">
+        <div class="book-reader__loading" id="book-loading" aria-hidden="true">
+            <div class="book-reader__loading-spread">
+                <span class="book-reader__loading-page"></span>
+                <span class="book-reader__loading-page"></span>
+            </div>
+        </div>
+        <div class="book-reader__mount" id="book-mount"></div>
+        <div class="pdf-reader" id="pdf-reader" hidden></div>
+        <div class="book-reader__counter" id="book-counter" aria-live="polite">1 / 1 sahifa</div>
+    </div>
+
+    <div class="book-reader__toolbar-shell" id="reader-toolbar-root"></div>
+    <div class="book-reader__audio-shell" id="audio-playback-root"></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block footer_note %}Reading on Luma Library{% endblock %}
+
+{% block site_scripts %}
+<script src="{% static 'users/js/constellation.js' %}" defer></script>
+{% endblock %}
+
+{% block extra_js %}
+{% if translation %}
+<script src="{% static 'library/js/split-sentences.js' %}" defer></script>
+<script src="{% static 'library/js/page-flip.browser.min.js' %}" defer></script>
+<script src="{% static 'library/js/pdf.min.js' %}" defer></script>
+<script type="module" src="{% static 'library/js/reader-orchestrator.js' %}" defer></script>
+<script src="{% static 'library/js/reader.js' %}" defer></script>
+{% endif %}
+{% endblock %}

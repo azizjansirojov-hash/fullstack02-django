@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#06070c">
+    <meta name="description" content="{% block meta_description %}A private and secure way to access your account.{% endblock %}">
+    <title>{% block title %}Account{% endblock %} · Luma</title>
+    <link rel="stylesheet" href="{% static 'users/css/auth.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <canvas id="constellation" class="constellation" aria-hidden="true"></canvas>
+    <div class="backdrop-glow" aria-hidden="true"></div>
+
+    <div class="app">
+        <header class="site-header">
+            <nav class="nav" aria-label="Primary navigation">
+                <a class="wordmark" href="{% block wordmark_href %}{% url 'library:catalog' %}{% endblock %}" aria-label="Luma home">
+                    <span class="wordmark__mark">LM<span class="wordmark__dot">.</span></span>
+                </a>
+
+                {% block nav_center %}
+                <div class="nav__center" aria-hidden="true">
+                    <span class="nav__step {% block step_login_class %}{% endblock %}">
+                        <em>01</em> Sign in
+                    </span>
+                    <span class="nav__step {% block step_register_class %}{% endblock %}">
+                        <em>02</em> Create account
+                    </span>
+                </div>
+                {% endblock %}
+
+                <div class="nav__links">
+                    {% block nav_status %}
+                    <span class="status-chip">
+                        <span class="status-chip__dot"></span>
+                        Secure access enabled
+                    </span>
+                    {% endblock %}
+                    {% block nav_action %}{% endblock %}
+                </div>
+            </nav>
+        </header>
+
+        <main class="page">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="site-footer">
+            <p>© 2026 Luma. All rights reserved.</p>
+            <p class="site-footer__security">{% block footer_note %}Secured with encrypted, HttpOnly authentication.{% endblock %}</p>
+        </footer>
+    </div>
+
+    {% block site_scripts %}
+    <script src="{% static 'users/js/constellation.js' %}" defer></script>
+    <script src="{% static 'users/js/auth.js' %}" defer></script>
+    {% endblock %}
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

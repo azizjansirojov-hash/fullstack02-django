@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Create account{% endblock %}
+
+{% block step_register_class %}is-active{% endblock %}
+
+{% block nav_action %}
+<a class="nav__text-link" href="{% url 'library:catalog' %}">Library</a>
+<a class="nav__action" href="{% url 'users:login' %}">Sign in</a>
+{% endblock %}
+
+{% block content %}
+<section class="auth-layout auth-layout--register">
+    <div class="hero" aria-labelledby="hero-title">
+        <span class="pill">
+            <span class="pill__dot"></span>
+            Join Luma today
+        </span>
+        <h1 id="hero-title" class="hero__title">
+            <span>CREATE</span>
+            <span class="hero__title--accent">ACCOUNT.</span>
+        </h1>
+        <p class="hero__lead">One account. A world of possibilities.</p>
+        <p class="hero__copy">
+            Simple to create. Effortless to use. Protected from the moment
+            you sign up.
+        </p>
+        <ul class="feature-list" aria-label="Account benefits">
+            <li>
+                <span class="feature-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 2.5 20 5.4v6.3c0 5.4-3.3 9-8 10.8-4.7-1.8-8-5.4-8-10.8V5.4L12 2.5Z"></path>
+                        <path d="m8.5 12 2.1 2.1 4.9-5"></path>
+                    </svg>
+                </span>
+                <span><strong>Private by design</strong>Your credentials stay protected.</span>
+            </li>
+            <li>
+                <span class="feature-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 7v5l3 2"></path>
+                    </svg>
+                </span>
+                <span><strong>Ready in moments</strong>Create your account in one simple step.</span>
+            </li>
+        </ul>
+    </div>
+
+    <div class="auth-column">
+        <section class="auth-card auth-card--register" aria-labelledby="register-title">
+            <div class="auth-card__header">
+                <p class="section-label">Luma Account</p>
+                <h2 id="register-title">Create your account</h2>
+                <p class="auth-card__subtitle">A few details. Then you're ready.</p>
+            </div>
+
+            <div
+                id="form-alert"
+                class="alert"
+                role="status"
+                aria-live="polite"
+                hidden
+            ></div>
+
+            <form
+                id="auth-form"
+                class="auth-form"
+                method="post"
+                action="{% url 'users:api-register' %}"
+                data-mode="register"
+                novalidate
+            >
+                {% csrf_token %}
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="id_username">Username</label>
+                        <input
+                            type="text"
+                            id="id_username"
+                            name="username"
+                            autocomplete="username"
+                            required
+                            maxlength="150"
+                            placeholder="Username"
+                            aria-describedby="username-hint username-error"
+                        >
+                        <p id="username-hint" class="field__hint">Letters, numbers, and @/./+/-/_.</p>
+                        <p id="username-error" class="field__error" hidden></p>
+                    </div>
+
+                    <div class="field">
+                        <label for="id_email">Email <span class="optional">Optional</span></label>
+                        <input
+                            type="email"
+                            id="id_email"
+                            name="email"
+                            autocomplete="email"
+                            placeholder="name@example.com"
+                            aria-describedby="email-error"
+                        >
+                        <p class="field__hint">Used only for your account.</p>
+                        <p id="email-error" class="field__error" hidden></p>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="id_password">Password</label>
+                    <div class="input-with-action">
+                        <input
+                            type="password"
+                            id="id_password"
+                            name="password"
+                            autocomplete="new-password"
+                            required
+                            minlength="8"
+                            placeholder="Create a password"
+                            aria-describedby="password-hint password-error"
+                        >
+                        <button type="button" class="toggle-password" data-target="id_password" aria-label="Show password">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>
+                            <span>Show</span>
+                        </button>
+                    </div>
+                    <p id="password-hint" class="field__hint">8 or more characters. Avoid common or personal passwords.</p>
+                    <p id="password-error" class="field__error" hidden></p>
+                </div>
+
+                <div class="field">
+                    <label for="id_password_confirm">Confirm password</label>
+                    <div class="input-with-action">
+                        <input
+                            type="password"
+                            id="id_password_confirm"
+                            name="password_confirm"
+                            autocomplete="new-password"
+                            required
+                            minlength="8"
+                            placeholder="Confirm your password"
+                            aria-describedby="password_confirm-error"
+                        >
+                        <button type="button" class="toggle-password" data-target="id_password_confirm" aria-label="Show password confirmation">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>
+                            <span>Show</span>
+                        </button>
+                    </div>
+                    <p id="password_confirm-error" class="field__error" hidden></p>
+                </div>
+
+                <p class="terms-copy">
+                    By continuing, you agree to keep your account credentials secure.
+                </p>
+
+                <button type="submit" class="primary-button" id="submit-button">
+                    <span class="button-label">Create account</span>
+                    <span class="button-spinner" aria-hidden="true" hidden></span>
+                    <svg class="button-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5"></path></svg>
+                </button>
+            </form>
+        </section>
+        <p class="privacy-note">
+            Already have a Luma Account? <a href="{% url 'users:login' %}">Sign in</a>
+        </p>
+    </div>
+</section>
+
+<dialog id="registration-success" class="success-dialog" aria-labelledby="success-title">
+    <div class="success-dialog__icon" aria-hidden="true">
+        <svg viewBox="0 0 32 32">
+            <path d="m8.5 16.5 5 5 10-11"></path>
+        </svg>
+    </div>
+    <p class="section-label">Account created</p>
+    <h2 id="success-title">You're all set.</h2>
+    <p>
+        Your Luma Account was created successfully. Sign in now to continue
+        securely.
+    </p>
+    <button type="button" id="continue-to-login" class="primary-button">
+        Continue to sign in
+        <svg class="button-arrow" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m7.5 4.5 5 5.5-5 5.5"></path>
+        </svg>
+    </button>
+</dialog>
+{% endblock %}
