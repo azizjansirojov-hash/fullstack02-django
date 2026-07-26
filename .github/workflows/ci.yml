@@ -35,5 +35,6 @@ jobs:
           library.purchase_access_tests
           library.upload_validation_tests
           library.catalog_perf_tests
+          library.flag_public_domain_tests
           users.tests
           --verbosity=1

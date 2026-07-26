@@ -122,3 +122,103 @@ class PurchaseMediaAccessTests(TestCase):
         allowed = self.client.get(self._read_url(self.licensed))
         self.assertEqual(allowed.status_code, 200)
         self.assertContains(allowed, 'Pullik matn')
+
+
+class PurchaseAccessAPIDetailTests(TestCase):
+    """Detail JSON must not advertise media URLs when the user lacks access."""
+
+    def setUp(self):
+        from django.conf import settings
+
+        from users.auth import get_tokens_for_user
+
+        self.settings = settings
+        self.get_tokens_for_user = get_tokens_for_user
+        self.user = User.objects.create_user(
+            username='apibuyer',
+            password='testpass123',
+            email='apibuyer@example.com',
+        )
+        self.licensed = Book.objects.create(
+            author_name='Licensed Author',
+            category=Book.Category.NOVEL,
+            slug='api-licensed-book',
+            is_published=True,
+            rights_status=Book.RightsStatus.LICENSED,
+            pdf_generation_status='ready',
+            audio_generation_status='ready',
+            pdf_file=SimpleUploadedFile(
+                'licensed.pdf',
+                b'%PDF-1.4 licensed',
+                content_type='application/pdf',
+            ),
+        )
+        BookTranslation.objects.create(
+            book=self.licensed,
+            language=BookTranslation.Language.UZ,
+            title='API pullik',
+            summary='Qisqa.',
+            body='Matn.',
+        )
+        self.public = Book.objects.create(
+            author_name='Fyodor Dostoyevskiy',
+            category=Book.Category.NOVEL,
+            slug='api-public-book',
+            is_published=True,
+            rights_status=Book.RightsStatus.PUBLIC_DOMAIN,
+            pdf_generation_status='ready',
+            audio_generation_status='ready',
+            pdf_file=SimpleUploadedFile(
+                'public.pdf',
+                b'%PDF-1.4 public',
+                content_type='application/pdf',
+            ),
+        )
+        BookTranslation.objects.create(
+            book=self.public,
+            language=BookTranslation.Language.UZ,
+            title='Jinoyat va jazo',
+            summary='Qisqa.',
+            body='Bepul matn.',
+        )
+
+    def _login(self):
+        tokens = self.get_tokens_for_user(self.user)
+        self.client.cookies[self.settings.JWT_ACCESS_COOKIE_NAME] = tokens['access']
+
+    def test_detail_hides_urls_without_purchase(self):
+        self._login()
+        url = reverse('library_api:book-detail', kwargs={'slug': self.licensed.slug})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['has_access'])
+        self.assertFalse(data['can_read'])
+        self.assertEqual(data['pdf_url'], '')
+        self.assertEqual(data['audio_url'], '')
+        self.assertTrue(data['has_pdf'])
+
+    def test_detail_public_domain_includes_urls(self):
+        self._login()
+        url = reverse('library_api:book-detail', kwargs={'slug': self.public.slug})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['has_access'])
+        self.assertTrue(data['can_read'])
+        self.assertTrue(data['pdf_url'].startswith('/library/media/'))
+
+    def test_detail_paid_purchase_includes_urls(self):
+        Purchase.objects.create(
+            user=self.user,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        self._login()
+        url = reverse('library_api:book-detail', kwargs={'slug': self.licensed.slug})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['has_access'])
+        self.assertTrue(data['pdf_url'].startswith('/library/media/'))
