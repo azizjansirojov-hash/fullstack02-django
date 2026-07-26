@@ -179,6 +179,15 @@ class GenerationJobConcurrentEnqueueTests(TransactionTestCase):
     def test_two_threads_create_one_active_job(self):
         import threading
 
+        from django.db import connection
+
+        if connection.vendor == 'sqlite':
+            self.skipTest(
+                'SQLite serializes writers (database is locked); '
+                'constraint coverage is in GenerationJobUniquenessTests. '
+                'Run this race on Postgres.'
+            )
+
         book = Book.objects.create(
             author_name='F',
             slug='race-job-book',
