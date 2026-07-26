@@ -5,6 +5,12 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
+from .validators import (
+    audio_file_validators,
+    cover_image_validators,
+    pdf_file_validators,
+)
+
 
 class Book(models.Model):
     """Shared metadata for a library title. Content lives in BookTranslation."""
@@ -37,18 +43,21 @@ class Book(models.Model):
         upload_to='covers/',
         blank=True,
         null=True,
+        validators=cover_image_validators,
         help_text='Optional cover image shown on the shelf and reader.',
     )
     pdf_file = models.FileField(
         upload_to='books/pdf/',
         blank=True,
         null=True,
+        validators=pdf_file_validators,
         help_text='Auto-generated PDF from Uzbek content (legacy uploads preserved).',
     )
     audio_file = models.FileField(
         upload_to='books/audio/',
         blank=True,
         null=True,
+        validators=audio_file_validators,
         help_text='Legacy single-track audio fallback (prefer AudioChapter tracks).',
     )
     pdf_source_hash = models.CharField(max_length=64, blank=True, default='')
@@ -178,6 +187,9 @@ class Book(models.Model):
         if self.is_published and self.pk:
             self.clean()
         super().save(*args, **kwargs)
+        from .catalog_context import invalidate_category_shelves_cache
+
+        invalidate_category_shelves_cache()
 
     def get_translation(self, language=None):
         """Return Uzbek translation, or any available translation as fallback."""
@@ -293,6 +305,7 @@ class AudioChapter(models.Model):
         upload_to='books/audio/',
         blank=True,
         null=True,
+        validators=audio_file_validators,
         help_text='Generated or legacy audio file for this track.',
     )
     duration_seconds = models.PositiveIntegerField(
