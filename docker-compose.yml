@@ -1,0 +1,101 @@
+# Use: docker compose --env-file backend/.env up --build
+# Requires SECRET_KEY and POSTGRES_PASSWORD in the compose --env-file (no weak defaults).
+
+x-app-environment: &app-environment
+  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in the compose --env-file}
+  DEBUG: "False"
+  USE_TLS: "0"
+  ALLOW_CONSOLE_EMAIL: ${ALLOW_CONSOLE_EMAIL:-1}
+  ALLOWED_HOSTS: localhost,127.0.0.1,web
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/1
+  FRONTEND_DIST: /app/frontend/dist
+  CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+  EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+  DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@libro.uz}
+  TTS_PROVIDER: ${TTS_PROVIDER:-edge}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in backend/.env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in backend/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # DB port is not published to the host by default.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      <<: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    restart: "no"
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    # Optional local overrides; --env-file values in `environment` win for secrets.
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      <<: *app-environment
+    volumes:
+      - media_data:/app/backend/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: >
+      gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 2
+
+  worker:
+    build: .
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      <<: *app-environment
+    volumes:
+      - media_data:/app/backend/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: >
+      python manage.py process_generation_jobs --loop --poll 2
+
+volumes:
+  media_data:
+  postgres_data:
