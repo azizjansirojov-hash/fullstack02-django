@@ -7,6 +7,20 @@ from rest_framework import serializers
 
 User = get_user_model()
 
+# Common disposable / throwaway domains — keep short; expand as needed.
+DISPOSABLE_EMAIL_DOMAINS = frozenset(
+    {
+        'mailinator.com',
+        'guerrillamail.com',
+        'guerrillamail.de',
+        '10minutemail.com',
+        'tempmail.com',
+        'yopmail.com',
+        'trashmail.com',
+        'sharklasers.com',
+    }
+)
+
 
 class RegisterSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150, trim_whitespace=True)
@@ -29,6 +43,11 @@ class RegisterSerializer(serializers.Serializer):
         email = (value or '').strip().lower()
         if not email:
             raise serializers.ValidationError('Email is required.')
+        domain = email.rsplit('@', 1)[-1]
+        if domain in DISPOSABLE_EMAIL_DOMAINS:
+            raise serializers.ValidationError(
+                'Please use a permanent email address (disposable domains are not allowed).'
+            )
         if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError('A user with this email already exists.')
         return email
