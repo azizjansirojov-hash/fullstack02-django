@@ -148,6 +148,32 @@ class RegisterAPITests(TestCase):
                     password='Str0ng-Passw0rd!',
                 )
 
+    def test_register_rejects_disposable_email(self):
+        payload = {**self.valid_payload, 'email': 'user@mailinator.com'}
+        response = self.client.post(
+            self.url,
+            data=payload,
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.json())
+
+
+class PasswordResetConfirmThrottleTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_confirm_view_has_password_reset_throttle(self):
+        from rest_framework.throttling import ScopedRateThrottle
+
+        from users.views import PasswordResetConfirmAPIView
+
+        self.assertEqual(
+            PasswordResetConfirmAPIView.throttle_scope,
+            'password_reset',
+        )
+        self.assertIn(ScopedRateThrottle, PasswordResetConfirmAPIView.throttle_classes)
+
 
 class LoginAPITests(TestCase):
     def setUp(self):
