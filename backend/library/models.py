@@ -559,6 +559,15 @@ class GenerationJob(models.Model):
         indexes = [
             models.Index(fields=['status', 'created_at']),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['book', 'job_type'],
+                condition=models.Q(
+                    status__in=['queued', 'running'],
+                ),
+                name='uniq_active_generation_job_book_type',
+            ),
+        ]
 
     def __str__(self):
         return f'Job {self.pk} book={self.book_id} {self.job_type} {self.status}'
