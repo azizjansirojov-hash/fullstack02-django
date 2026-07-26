@@ -317,6 +317,12 @@ class AudioChapter(models.Model):
 
     class Meta:
         ordering = ['order', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['book', 'order'],
+                name='uniq_audio_chapter_book_order',
+            ),
+        ]
 
     def __str__(self):
         label = self.title or f'Track {self.order}'

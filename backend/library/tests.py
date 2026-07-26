@@ -216,6 +216,16 @@ class AudioChapterPayloadTests(TestCase):
         self.assertEqual(self.book.get_audio_chapters_payload(), [])
         self.assertFalse(self.book.has_audio())
 
+    def test_unique_book_order_constraint(self):
+        from django.db import IntegrityError, transaction
+
+        AudioChapter.objects.create(book=self.book, title='a', order=1)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AudioChapter.objects.create(book=self.book, title='b', order=1)
+        AudioChapter.objects.create(book=self.book, title='c', order=2)
+        self.assertEqual(AudioChapter.objects.filter(book=self.book).count(), 2)
+
     def test_payload_falls_back_to_legacy_audio_file(self):
         from django.core.files.base import ContentFile
 
