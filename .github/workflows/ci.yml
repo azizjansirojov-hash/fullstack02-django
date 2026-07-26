@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SECRET_KEY: ci-test-secret-key-not-for-production-use-32chars
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      ALLOW_CONSOLE_EMAIL: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r ../requirements.txt
+      - name: Migrate
+        run: python manage.py migrate --noinput
+      - name: Run tests
+        run: >
+          python manage.py test
+          library.api_tests
+          library.tests
+          library.generation_tests
+          library.verification_tests
+          library.purchase_access_tests
+          library.upload_validation_tests
+          library.catalog_perf_tests
+          users.tests
+          --verbosity=1
