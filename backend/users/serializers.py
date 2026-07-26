@@ -10,7 +10,7 @@ User = get_user_model()
 
 class RegisterSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150, trim_whitespace=True)
-    email = serializers.EmailField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=True, allow_blank=False)
     password = serializers.CharField(write_only=True, style={'input_type': 'password'})
     password_confirm = serializers.CharField(
         write_only=True,
@@ -27,7 +27,9 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         email = (value or '').strip().lower()
-        if email and User.objects.filter(email__iexact=email).exists():
+        if not email:
+            raise serializers.ValidationError('Email is required.')
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError('A user with this email already exists.')
         return email
 
@@ -43,7 +45,7 @@ class RegisterSerializer(serializers.Serializer):
         # Temporary user instance so attribute-similarity checks work correctly.
         temp_user = User(
             username=attrs['username'],
-            email=attrs.get('email', ''),
+            email=attrs['email'],
         )
         try:
             validate_password(password, user=temp_user)
@@ -55,7 +57,7 @@ class RegisterSerializer(serializers.Serializer):
         validated_data.pop('password_confirm')
         return User.objects.create_user(
             username=validated_data['username'],
-            email=validated_data.get('email', ''),
+            email=validated_data['email'],
             password=validated_data['password'],
         )
 
