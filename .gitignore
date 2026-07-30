@@ -27,6 +27,9 @@ backups/
 git_status_before_commit.txt
 git_status_review.txt
 
+# Deleted bridge parity helpers (keep ignored if a local lock prevents unlink)
+scripts/parity_*.py
+
 # Node
 frontend/node_modules/
 frontend/dist/
