@@ -11,8 +11,10 @@ from .models import (
     Book,
     BookTranslation,
     GenerationJob,
+    Notification,
     Purchase,
     ReadingProgress,
+    Review,
 )
 
 
@@ -40,6 +42,40 @@ class PurchaseAdmin(admin.ModelAdmin):
             f'Marked {updated} purchase(s) as paid.',
             messages.SUCCESS,
         )
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'type', 'message', 'book', 'is_read', 'created_at')
+    list_filter = ('type', 'is_read')
+    search_fields = ('user__username', 'user__email', 'message', 'book__slug')
+    readonly_fields = ('created_at',)
+    autocomplete_fields = ('user', 'book')
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    """Staff moderation for reader ratings and comments."""
+
+    list_display = ('user', 'book', 'rating', 'created_at', 'text_preview')
+    list_filter = ('rating',)
+    search_fields = (
+        'user__username',
+        'user__email',
+        'book__slug',
+        'book__author_name',
+        'book__translations__title',
+        'text',
+    )
+    readonly_fields = ('created_at', 'updated_at')
+    autocomplete_fields = ('user', 'book')
+
+    @admin.display(description='Text')
+    def text_preview(self, obj):
+        text = (obj.text or '').strip()
+        if len(text) <= 80:
+            return text or '—'
+        return f'{text[:77]}…'
 
 
 @admin.register(ReadingProgress)
