@@ -1,14 +1,12 @@
 """Tests for the Uzbek-only library catalog redirects and reader."""
 
-import json
-
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
 from .models import AudioChapter, Book, BookTranslation, Purchase
-from .spa_urls import spa_book_detail_url, spa_library_home_url
+from .spa_urls import spa_book_detail_url, spa_book_read_url, spa_library_home_url
 
 User = get_user_model()
 
@@ -82,11 +80,12 @@ class LibraryViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, spa_book_detail_url(self.book.slug))
 
-    def test_guests_cannot_open_reader(self):
+    def test_guests_reader_redirects_to_spa(self):
+        """HTML reader removed — /read/ redirects to SPA (auth enforced client-side)."""
         read_url = reverse('library:book-read', kwargs={'slug': self.book.slug})
         read_response = self.client.get(read_url)
         self.assertEqual(read_response.status_code, 302)
-        self.assertIn(reverse('users:login'), read_response.url)
+        self.assertEqual(read_response.url, spa_book_read_url(self.book.slug))
 
     def test_registered_user_detail_redirects_to_spa(self):
         self.client.login(username='reader', password='testpass123')
@@ -95,41 +94,23 @@ class LibraryViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, spa_book_detail_url(self.book.slug))
 
-    def test_immersive_reader_opens_on_read_url(self):
+    def test_immersive_reader_redirects_to_spa(self):
         self.client.login(username='reader', password='testpass123')
         url = reverse('library:book-read', kwargs={'slug': self.book.slug})
 
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'O‘zbekcha birinchi bob')
-        self.assertNotContains(response, 'Why read this book')
-        self.assertContains(response, 'book-reader')
-        self.assertContains(response, 'book-reader__toolbar-shell')
-        self.assertNotContains(response, '<nav class="book-reader__toolbar"')
-        self.assertNotContains(response, 'id="btn-prev"')
-        self.assertContains(response, 'book-counter')
-        self.assertContains(response, 'reader-mode')
-        self.assertContains(response, 'reader-toolbar-root')
-        self.assertContains(response, 'pdf-reader')
-        self.assertContains(response, 'reader-orchestrator.js')
-        self.assertContains(response, spa_library_home_url())
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, spa_book_read_url(self.book.slug))
 
-    def test_reader_accepts_jwt_cookie_without_session(self):
-        """JWT-only clients (expired Django session) can still open the reader."""
-        from django.conf import settings
-
-        from users.auth import get_tokens_for_user
-
-        tokens = get_tokens_for_user(self.reader)
-        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = tokens['access']
-        # Ensure no Django session auth is present.
-        session = self.client.session
-        session.flush()
-
+    def test_reader_preserves_query_string_on_spa_redirect(self):
+        self.client.login(username='reader', password='testpass123')
         url = reverse('library:book-read', kwargs={'slug': self.book.slug})
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'book-reader')
+        response = self.client.get(url + '?mode=pdf')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('mode=pdf', response.url)
+        self.assertTrue(
+            response.url.startswith(spa_book_read_url(self.book.slug))
+        )
 
     def test_unpublished_book_detail_not_found(self):
         self.client.login(username='reader', password='testpass123')
@@ -252,9 +233,11 @@ class AudioChapterPayloadTests(TestCase):
         self.assertEqual([row['title'] for row in payload], ['1-bob', '2-bob', '3-qism'])
         self.assertTrue(self.book.has_audio())
 
-    def test_reader_embeds_audio_chapters_json(self):
+    def test_reader_url_redirects_to_spa_with_audio_book(self):
         from django.core.files.base import ContentFile
         from django.contrib.auth import get_user_model
+
+        from .spa_urls import spa_book_read_url
 
         User = get_user_model()
         user = User.objects.create_user(username='audio-reader', password='testpass123')
@@ -269,17 +252,9 @@ class AudioChapterPayloadTests(TestCase):
         self.client.login(username='audio-reader', password='testpass123')
         url = reverse('library:book-read', kwargs={'slug': self.book.slug})
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="audio-chapters-data"')
-        content = response.content.decode()
-        start = content.find('id="audio-chapters-data"')
-        chunk = content[start : start + 800]
-        json_start = chunk.find('>') + 1
-        json_end = chunk.find('</script>')
-        parsed = json.loads(chunk[json_start:json_end])
-        self.assertEqual(len(parsed), 1)
-        self.assertEqual(parsed[0]['title'], 'Intro')
-        self.assertTrue(response.context['audio_url'])
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, spa_book_read_url(self.book.slug))
+        self.assertTrue(self.book.has_audio())
 
 
 class LibraryReaderTests(TestCase):
@@ -311,21 +286,12 @@ class LibraryReaderTests(TestCase):
             status=Purchase.Status.PAID,
         )
 
-    def test_reader_embeds_audio_sync_via_json_script(self):
+    def test_reader_url_redirects_to_spa(self):
         self.client.login(username='reader', password='testpass123')
         url = reverse('library:book-read', kwargs={'slug': self.book.slug})
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="audio-sync-data"')
-        self.assertNotContains(response, 'data-audio-sync=')
-        content = response.content.decode()
-        script_start = content.find('id="audio-sync-data"')
-        script_chunk = content[script_start : script_start + 500]
-        json_start = script_chunk.find('>') + 1
-        json_end = script_chunk.find('</script>')
-        parsed = json.loads(script_chunk[json_start:json_end])
-        self.assertEqual(len(parsed), 2)
-        self.assertEqual(parsed[0]['start'], 0.0)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, spa_book_read_url(self.book.slug))
 
     def test_empty_body_detail_redirects_to_spa(self):
         empty_book = Book.objects.create(
@@ -348,7 +314,8 @@ class LibraryReaderTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, spa_book_detail_url(empty_book.slug))
 
-    def test_empty_body_read_redirects_to_spa_detail(self):
+    def test_empty_body_read_still_redirects_to_spa_reader(self):
+        """Empty body is handled by the SPA/manifest — Django only redirects."""
         empty_book = Book.objects.create(
             author_name='Empty Read',
             slug='empty-read-book',
@@ -372,4 +339,4 @@ class LibraryReaderTests(TestCase):
         url = reverse('library:book-read', kwargs={'slug': empty_book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, spa_book_detail_url(empty_book.slug))
+        self.assertEqual(response.url, spa_book_read_url(empty_book.slug))

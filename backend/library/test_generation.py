@@ -17,6 +17,7 @@ from library.jobs import (
     run_job,
 )
 from library.models import Book, BookTranslation, GenerationJob
+from library.test_auth_helpers import authenticate_jwt
 
 User = get_user_model()
 
@@ -50,18 +51,55 @@ class GenerationHealthTests(TestCase):
         self.assertTrue(payload['worker_likely_down'])
         self.assertGreaterEqual(payload['stale_queued'], 1)
 
+    def test_stale_running_marks_worker_likely_down(self):
+        """A RUNNING job whose lock_at is older than STALE_RUNNING_SECONDS should
+        flag worker_likely_down even when there are no stale queued jobs."""
+        from library.jobs import STALE_RUNNING_SECONDS
+
+        job = GenerationJob.objects.create(
+            book=self.book,
+            job_type=GenerationJob.JobType.PDF,
+            status=GenerationJob.Status.RUNNING,
+            locked_by='dead-worker-abc',
+        )
+        # Backdate locked_at beyond the stale window.
+        stale_ago = timezone.now() - timedelta(seconds=STALE_RUNNING_SECONDS + 60)
+        GenerationJob.objects.filter(pk=job.pk).update(locked_at=stale_ago)
+
+        payload = generation_health_payload()
+        self.assertTrue(payload['worker_likely_down'])
+        self.assertGreaterEqual(payload['stale_running'], 1)
+        self.assertEqual(payload['status'], 'degraded')
+
+    def test_fresh_running_does_not_flag_degraded(self):
+        """A recently-locked RUNNING job should not trigger worker_likely_down."""
+        GenerationJob.objects.create(
+            book=self.book,
+            job_type=GenerationJob.JobType.AUDIO,
+            status=GenerationJob.Status.RUNNING,
+            locked_by='live-worker-xyz',
+            locked_at=timezone.now(),
+        )
+        payload = generation_health_payload()
+        self.assertFalse(payload['worker_likely_down'])
+        self.assertEqual(payload['stale_running'], 0)
+        self.assertEqual(payload['status'], 'ok')
+
     def test_health_endpoint_staff_only(self):
         url = reverse('generation-health')
         self.assertIn(
             self.client.get(url).status_code, (302, 401)
         )
-        self.client.login(username='reader', password='Str0ng-Passw0rd!')
+        authenticate_jwt(self.client, self.user)
         self.assertEqual(self.client.get(url).status_code, 403)
         self.client.logout()
-        self.client.login(username='staffer', password='Str0ng-Passw0rd!')
+        authenticate_jwt(self.client, self.staff)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertIn('queued', response.json())
+        data = response.json()
+        self.assertIn('queued', data)
+        self.assertIn('stale_running', data)
+        self.assertIn('stale_running_after_seconds', data)
 
 
 class GenerationRightsAndQuotaTests(TestCase):
