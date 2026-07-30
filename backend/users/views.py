@@ -1,15 +1,17 @@
 """Views for registration, login, password reset, and JWT cookie APIs."""
 
+import logging
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
-from django.shortcuts import render
 from django.urls import reverse
+
+logger = logging.getLogger(__name__)
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import url_has_allowed_host_and_scheme, urlsafe_base64_decode, urlsafe_base64_encode
@@ -26,7 +28,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .auth import clear_jwt_cookies, get_tokens_for_user, set_jwt_cookies
 from .authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
 from .serializers import LoginSerializer, RegisterSerializer
-from library.spa_urls import spa_library_home_url
+from library.spa_urls import (
+    spa_library_home_url,
+    spa_login_url,
+    spa_password_reset_confirm_url,
+    spa_password_reset_url,
+    spa_register_url,
+)
 
 User = get_user_model()
 
@@ -51,54 +59,58 @@ def _safe_redirect_url(request, candidate, fallback=None):
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class RegisterPageView(APIView):
-    """Render the registration page and ensure a CSRF cookie is set."""
+    """Redirect the registration route to the SPA."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        return render(request, 'users/register.html')
+        from django.shortcuts import redirect
+
+        return redirect(spa_register_url())
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class LoginPageView(APIView):
-    """Render the login page and ensure a CSRF cookie is set."""
+    """Redirect the login route to the SPA."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        return render(request, 'users/login.html')
+        from django.shortcuts import redirect
+
+        return redirect(spa_login_url())
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class PasswordResetPageView(APIView):
-    """Render password-reset request page."""
+    """Redirect the password-reset request route to the SPA."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
-        return render(request, 'users/password_reset.html')
+        from django.shortcuts import redirect
+
+        return redirect(spa_password_reset_url())
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class PasswordResetConfirmPageView(APIView):
-    """Render password-reset confirm page (uid/token in path)."""
+    """Redirect email confirm links to the React SPA confirm route."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request, uidb64, token):
-        return render(
-            request,
-            'users/password_reset_confirm.html',
-            {'uidb64': uidb64, 'token': token},
-        )
+        from django.shortcuts import redirect
+
+        return redirect(spa_password_reset_confirm_url(uidb64, token))
 
 
 class RegisterAPIView(APIView):
-    """Create a new user account, sign them in, and issue JWT cookies."""
+    """Create a new user account and issue JWT cookies only (no session)."""
 
     permission_classes = [AllowAny]
     authentication_classes = [CSRFEnforcedAuthentication]
@@ -110,7 +122,6 @@ class RegisterAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        django_login(request, user)
         tokens = get_tokens_for_user(user)
         redirect_url = _safe_redirect_url(
             request,
@@ -147,9 +158,6 @@ class LoginAPIView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
-
-        # Keep Django's request.user available for templates/messages.
-        django_login(request, user)
 
         tokens = get_tokens_for_user(user)
         redirect_url = _safe_redirect_url(
@@ -198,18 +206,6 @@ class CookieTokenRefreshAPIView(APIView):
         access = serializer.validated_data['access']
         refresh = serializer.validated_data.get('refresh', raw_refresh)
 
-        # Keep Django session alive alongside JWT so any session-only surfaces
-        # (and bookmarking) stay consistent after long-lived SPA use.
-        try:
-            from rest_framework_simplejwt.tokens import AccessToken
-
-            user_id = AccessToken(access).get('user_id')
-            user = User.objects.filter(pk=user_id).first()
-            if user is not None and user.is_active:
-                django_login(request, user)
-        except (TokenError, TypeError, ValueError, KeyError):
-            pass
-
         response = Response({'detail': 'Token refreshed.'})
         return set_jwt_cookies(response, {'access': access, 'refresh': refresh})
 
@@ -253,7 +249,7 @@ class MeAPIView(APIView):
 
 
 class LogoutAPIView(APIView):
-    """Clear JWT cookies, blacklist refresh token, and end the Django session."""
+    """JWT cookies are primary auth; clear residual Django session if present."""
 
     permission_classes = [AllowAny]
     authentication_classes = [CSRFEnforcedAuthentication, JWTCookieAuthentication]
@@ -291,22 +287,29 @@ class PasswordResetRequestAPIView(APIView):
         for user in users:
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
-            path = reverse(
-                'users:password-reset-confirm',
-                kwargs={'uidb64': uid, 'token': token},
-            )
-            reset_url = request.build_absolute_uri(path)
-            send_mail(
-                subject='Libro.UZ — parolni tiklash',
-                message=(
-                    f'Salom {user.username},\n\n'
-                    f'Parolingizni tiklash uchun havola:\n{reset_url}\n\n'
-                    'Agar so‘rovni siz yubormagan bo‘lsangiz, e’tiborsiz qoldiring.\n'
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-                fail_silently=True,
-            )
+            # Prefer SPA confirm URL; Django path still redirects for old emails.
+            reset_url = spa_password_reset_confirm_url(uid, token)
+            if reset_url.startswith('/'):
+                reset_url = request.build_absolute_uri(reset_url)
+            try:
+                send_mail(
+                    subject='Libro.UZ — parolni tiklash',
+                    message=(
+                        f'Salom {user.username},\n\n'
+                        f'Parolingizni tiklash uchun havola:\n{reset_url}\n\n'
+                        'Agar so‘rovni siz yubormagan bo‘lsangiz,'
+                        ' e’tiborsiz qoldiring.\n'
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                    fail_silently=False,
+                )
+            except Exception:
+                # Keep HTTP 200 (anti-enumeration) but log so SMTP
+                # misconfigurations are visible in server logs.
+                logger.exception(
+                    'Password-reset email failed for user pk=%s', user.pk
+                )
         return Response({'detail': detail})
 
 

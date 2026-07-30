@@ -1,37 +1,46 @@
 """Tests for registration and login flows."""
 
+import logging
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from library.spa_urls import spa_library_home_url
+from library.spa_urls import (
+    spa_library_home_url,
+    spa_login_url,
+    spa_password_reset_url,
+    spa_register_url,
+)
 
 User = get_user_model()
 
 
 class AuthPageTests(TestCase):
-    def test_register_page_renders(self):
+    def test_register_page_redirects_to_spa(self):
         response = self.client.get(reverse('users:register'))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Hisobingizni yarating')
-        self.assertContains(response, 'id="registration-success"')
-        self.assertContains(response, 'Kirishga o‘tish')
-        self.assertContains(response, 'csrfmiddlewaretoken')
-        self.assertContains(response, spa_library_home_url())
-        self.assertIn('csrftoken', response.cookies)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, spa_register_url())
 
-    def test_login_page_renders(self):
+    def test_login_page_redirects_to_spa(self):
         response = self.client.get(reverse('users:login'))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '<h2 id="login-title">Kirish</h2>', html=True)
-        self.assertContains(response, 'csrfmiddlewaretoken')
-        self.assertContains(response, spa_library_home_url())
-        self.assertIn('csrftoken', response.cookies)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, spa_login_url())
+
+    def test_password_reset_page_redirects_to_spa(self):
+        response = self.client.get(reverse('users:password-reset'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, spa_password_reset_url())
 
     def test_home_redirects_to_login(self):
         response = self.client.get('/')
-        self.assertRedirects(response, reverse('users:login'))
+        self.assertRedirects(
+            response,
+            reverse('users:login'),
+            fetch_redirect_response=False,
+        )
 
 
 class RegisterAPITests(TestCase):
@@ -157,6 +166,43 @@ class RegisterAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn('email', response.json())
+
+
+class PasswordResetEmailTests(TestCase):
+    """Password-reset email: SMTP failure is logged but HTTP 200 is still returned."""
+
+    def setUp(self):
+        cache.clear()
+        self.url = reverse('users:api-password-reset')
+        self.user = User.objects.create_user(
+            username='resetme',
+            email='resetme@example.com',
+            password='Str0ng-Passw0rd!',
+        )
+
+    def test_reset_returns_200_even_when_smtp_fails(self):
+        from smtplib import SMTPException
+
+        with patch('users.views.send_mail', side_effect=SMTPException('conn refused')):
+            with self.assertLogs('users.views', level=logging.ERROR) as log_ctx:
+                response = self.client.post(
+                    self.url,
+                    data={'email': 'resetme@example.com'},
+                    content_type='application/json',
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('reset link has been sent', response.json()['detail'])
+        # At least one ERROR/EXCEPTION entry mentioning the user pk
+        combined = ' '.join(log_ctx.output)
+        self.assertIn(str(self.user.pk), combined)
+
+    def test_reset_returns_200_for_unknown_email(self):
+        response = self.client.post(
+            self.url,
+            data={'email': 'nobody@example.com'},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
 
 
 class PasswordResetConfirmThrottleTests(TestCase):

@@ -7,6 +7,7 @@ from django.views import View
 
 from .access import user_can_access_book
 from .auth_access import AuthRequiredMixin
+from .media_streaming import serve_ranged_file
 from .models import AudioChapter, Book
 
 
@@ -51,10 +52,12 @@ class BookAudioMediaView(AuthRequiredMixin, View):
             return _deny_access(request)
         if not book.audio_file:
             raise Http404('Audio not available.')
-        return FileResponse(
+        filename = book.audio_file.name.split('/')[-1]
+        return serve_ranged_file(
+            request,
             book.audio_file.open('rb'),
+            filename=filename,
             as_attachment=False,
-            filename=book.audio_file.name.split('/')[-1],
         )
 
 
@@ -68,8 +71,10 @@ class BookChapterAudioMediaView(AuthRequiredMixin, View):
         chapter = get_object_or_404(AudioChapter, pk=chapter_id, book=book)
         if not chapter.audio_file:
             raise Http404('Audio not available.')
-        return FileResponse(
+        filename = chapter.audio_file.name.split('/')[-1]
+        return serve_ranged_file(
+            request,
             chapter.audio_file.open('rb'),
+            filename=filename,
             as_attachment=False,
-            filename=chapter.audio_file.name.split('/')[-1],
         )
