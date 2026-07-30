@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Huquqlar / DMCA · Libro.UZ{% endblock %}
+{% block content %}
+<article class="legal-page" style="max-width:42rem;margin:2rem auto;padding:1rem;line-height:1.6">
+  <h1>Huquqlar egasi / DMCA xabarnomasi</h1>
+  <p>
+    If you are a rights holder and believe a title on Libro.UZ infringes your rights,
+    submit this form. Staff email: <strong>{{ rights_email }}</strong>
+  </p>
+  <form id="rights-report-form" method="post" action="/api/rights-report/">
+    {% csrf_token %}
+    <p>
+      <label>Ism<br>
+        <input name="name" type="text" style="width:100%">
+      </label>
+    </p>
+    <p>
+      <label>Email *<br>
+        <input name="email" type="email" required style="width:100%">
+      </label>
+    </p>
+    <p>
+      <label>Kitob / URL<br>
+        <input name="book_ref" type="text" style="width:100%">
+      </label>
+    </p>
+    <p>
+      <label>Xabar *<br>
+        <textarea name="message" required rows="8" style="width:100%"></textarea>
+      </label>
+    </p>
+    <button type="submit">Yuborish</button>
+    <p id="rights-report-status" role="status"></p>
+  </form>
+  <script>
+  (function () {
+    var form = document.getElementById('rights-report-form');
+    var statusEl = document.getElementById('rights-report-status');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var csrf = form.querySelector('[name=csrfmiddlewaretoken]');
+      var data = {
+        name: form.name.value,
+        email: form.email.value,
+        book_ref: form.book_ref.value,
+        message: form.message.value
+      };
+      fetch('/api/rights-report/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf ? csrf.value : ''
+        },
+        body: JSON.stringify(data)
+      }).then(function (r) {
+        return r.json().then(function (j) {
+          statusEl.textContent = j.detail || (r.ok ? 'OK' : 'Error');
+        });
+      }).catch(function () {
+        statusEl.textContent = 'Network error';
+      });
+    });
+  })();
+  </script>
+  <p><a href="/terms/">Terms</a> · <a href="/privacy/">Privacy</a></p>
+</article>
+{% endblock %}

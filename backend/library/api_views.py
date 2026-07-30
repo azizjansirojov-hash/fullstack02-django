@@ -1,18 +1,20 @@
 """JSON API views for the library (SPA). Template views stay unchanged."""
 
-from django.db.models import Count
+from django.db import IntegrityError
+from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from users.authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
 
 from .access import user_can_access_book
 from .catalog_context import DISPLAY_LANG, build_catalog_context
-from .models import Book, ReadingProgress
+from .models import Book, ReadingProgress, Review
+from .serializers import ProgressUpsertSerializer, ReviewSerializer, ReviewWriteSerializer
 
 
 def serialize_activity_timestamps(user):
@@ -56,6 +58,8 @@ def serialize_book_card(book, translation, *, authenticated=False, user=None):
     include_urls = has_access
     audio_chapters = book.get_audio_chapters_payload(include_urls=include_urls)
     audio_url = audio_chapters[0]['url'] if audio_chapters and include_urls else ''
+    avg = getattr(book, 'avg_rating', None)
+    review_total = getattr(book, 'review_total', None)
     return {
         'slug': book.slug,
         'author_name': book.author_name,
@@ -75,7 +79,15 @@ def serialize_book_card(book, translation, *, authenticated=False, user=None):
         'audio_duration_seconds': book.total_audio_duration_seconds(),
         'title': translation.title if translation else book.slug,
         'summary': (translation.summary or '') if translation else '',
+        # Present when queryset was annotated (catalog / continue_reading).
+        'average_rating': round(float(avg), 2) if avg is not None else None,
+        'review_count': int(review_total) if review_total is not None else 0,
     }
+
+
+def serialize_review(review):
+    """Minimal public review payload."""
+    return ReviewSerializer(review).data
 
 
 def serialize_progress_payload(progress):
@@ -95,6 +107,11 @@ def serialize_progress_payload(progress):
 def serialize_progress_card(row, *, authenticated=True, user=None):
     """Book card with nested progress for My Library / continue_reading."""
     translation = row.book.get_translation(DISPLAY_LANG)
+    # Propagate review aggregates annotated on the progress queryset onto the book
+    # so serialize_book_card can include average_rating / review_count.
+    if getattr(row, 'avg_rating', None) is not None or getattr(row, 'review_total', None) is not None:
+        row.book.avg_rating = getattr(row, 'avg_rating', None)
+        row.book.review_total = getattr(row, 'review_total', 0) or 0
     card = serialize_book_card(
         row.book,
         translation,
@@ -120,6 +137,10 @@ def progress_queryset_for_user(user, status_value=None):
         ReadingProgress.objects.filter(user=user, book__is_published=True)
         .select_related('book')
         .prefetch_related('book__translations', 'book__audio_chapters')
+        .annotate(
+            avg_rating=Avg('book__reviews__rating'),
+            review_total=Count('book__reviews', distinct=True),
+        )
         .order_by('-updated_at')
     )
     if status_value is not None:
@@ -281,6 +302,31 @@ class MyLibraryAPIView(APIView):
         return Response(payload)
 
 
+def _serialize_similar_books(book, user, *, authenticated=False, limit=4):
+    """Return up to `limit` published books in the same category, excluding `book`."""
+    similar_qs = (
+        Book.objects.filter(
+            category=book.category,
+            is_published=True,
+        )
+        .exclude(pk=book.pk)
+        .prefetch_related('translations', 'audio_chapters')
+        .order_by('author_name', 'slug')[:limit]
+    )
+    result = []
+    for similar in similar_qs:
+        translation = similar.get_translation(DISPLAY_LANG)
+        result.append(
+            serialize_book_card(
+                similar,
+                translation,
+                authenticated=authenticated,
+                user=user if authenticated else None,
+            )
+        )
+    return result
+
+
 class BookDetailAPIView(APIView):
     """Protected book detail JSON — mirrors BookDetailView (login required)."""
 
@@ -302,6 +348,10 @@ class BookDetailAPIView(APIView):
             book, translation, authenticated=True, user=request.user
         )
         progress = ReadingProgress.objects.filter(user=request.user, book=book).first()
+        similar_books = _serialize_similar_books(
+            book, request.user, authenticated=True, limit=4
+        )
+        agg = book.reviews.aggregate(avg=Avg('rating'), total=Count('id'))
         payload.update(
             {
                 'can_read': can_read_body and has_access,
@@ -309,9 +359,117 @@ class BookDetailAPIView(APIView):
                 'audio_chapters': audio_chapters,
                 'summary': (translation.summary or '') if translation else '',
                 'reading_status': progress.status if progress else None,
+                'similar_books': similar_books,
+                'average_rating': round(agg['avg'], 2) if agg['avg'] else None,
+                'review_count': agg['total'],
             }
         )
         return Response(payload)
+
+
+class ReviewAPIView(APIView):
+    """List, create, update, or delete the review for a published book.
+
+    GET  — public, returns all reviews + aggregate stats.
+    POST — authenticated; creates a review (one per user per book).
+    PUT  — authenticated; updates the caller's existing review.
+    DELETE — authenticated; deletes the caller's existing review.
+    """
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'review_write'
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_authenticators(self):
+        if self.request.method == 'GET':
+            return [JWTCookieAuthentication()]
+        return [
+            CSRFEnforcedAuthentication(),
+            JWTCookieAuthentication(),
+        ]
+
+    def _get_published_book(self, slug):
+        return get_object_or_404(Book, slug=slug, is_published=True)
+
+    def get_throttles(self):
+        # Keep review browsing public/unthrottled; throttle only writes.
+        if self.request.method == 'GET':
+            return []
+        return super().get_throttles()
+
+    def get(self, request, slug):
+        book = self._get_published_book(slug)
+        reviews_qs = book.reviews.select_related('user').order_by('-created_at')
+        agg = book.reviews.aggregate(avg=Avg('rating'), total=Count('id'))
+        return Response({
+            'count': agg['total'],
+            'average_rating': round(agg['avg'], 2) if agg['avg'] else None,
+            'results': ReviewSerializer(reviews_qs, many=True).data,
+        })
+
+    def post(self, request, slug):
+        book = self._get_published_book(slug)
+        if Review.objects.filter(user=request.user, book=book).exists():
+            return Response(
+                {'detail': 'You already have a review for this book. Use PUT to update it.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = ReviewWriteSerializer(data=request.data)
+        if not serializer.is_valid():
+            detail = next(iter(serializer.errors.values()))[0]
+            if 'rating' in serializer.errors:
+                detail = 'rating must be an integer between 1 and 5.'
+            elif 'text' in serializer.errors:
+                detail = 'text must not exceed 2000 characters.'
+            return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        rating = serializer.validated_data['rating']
+        text = serializer.validated_data.get('text', '')
+        try:
+            review = Review.objects.create(
+                user=request.user, book=book, rating=rating, text=text
+            )
+        except IntegrityError:
+            return Response(
+                {'detail': 'You already have a review for this book. Use PUT to update it.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(ReviewSerializer(review).data, status=status.HTTP_201_CREATED)
+
+    def put(self, request, slug):
+        book = self._get_published_book(slug)
+        review = Review.objects.filter(user=request.user, book=book).first()
+        if not review:
+            return Response(
+                {'detail': 'No review found. Use POST to create one.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = ReviewWriteSerializer(data=request.data)
+        if not serializer.is_valid():
+            detail = next(iter(serializer.errors.values()))[0]
+            if 'rating' in serializer.errors:
+                detail = 'rating must be an integer between 1 and 5.'
+            elif 'text' in serializer.errors:
+                detail = 'text must not exceed 2000 characters.'
+            return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        review.rating = serializer.validated_data['rating']
+        review.text = serializer.validated_data.get('text', '')
+        review.save(update_fields=['rating', 'text', 'updated_at'])
+        return Response(ReviewSerializer(review).data)
+
+    def delete(self, request, slug):
+        book = self._get_published_book(slug)
+        review = Review.objects.filter(user=request.user, book=book).first()
+        if not review:
+            return Response(
+                {'detail': 'No review found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        review.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ReadingProgressAPIView(APIView):
@@ -321,7 +479,6 @@ class ReadingProgressAPIView(APIView):
     authentication_classes = [
         CSRFEnforcedAuthentication,
         JWTCookieAuthentication,
-        SessionAuthentication,
     ]
 
     def get(self, request, slug):
@@ -339,42 +496,23 @@ class ReadingProgressAPIView(APIView):
 
     def _upsert(self, request, slug):
         book = get_object_or_404(Book, slug=slug, is_published=True)
-        mode = request.data.get('mode') or ReadingProgress.Mode.FLIP
-        if mode not in ReadingProgress.Mode.values:
-            mode = ReadingProgress.Mode.FLIP
-        try:
-            page = int(request.data.get('page', 0) or 0)
-        except (TypeError, ValueError):
-            page = 0
-        page = max(0, page)
-        total_pages = request.data.get('total_pages', None)
-        if total_pages in ('', None):
-            total_pages = None
-        else:
-            try:
-                total_pages = max(1, int(total_pages))
-            except (TypeError, ValueError):
-                total_pages = None
-        chapter_id = request.data.get('chapter_id', None)
-        if chapter_id in ('', None):
-            chapter_id = None
-        else:
-            try:
-                chapter_id = int(chapter_id)
-            except (TypeError, ValueError):
-                chapter_id = None
-        try:
-            position = float(request.data.get('position', 0) or 0)
-        except (TypeError, ValueError):
-            position = 0.0
-
-        reopen = bool(request.data.get('reopen'))
-        requested_status = request.data.get('status')
-        if requested_status not in (None, '') and requested_status not in ReadingProgress.Status.values:
-            return Response(
-                {'detail': 'Invalid status.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer = ProgressUpsertSerializer(data=request.data)
+        if not serializer.is_valid():
+            if 'status' in serializer.errors:
+                return Response(
+                    {'detail': 'Invalid status.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        mode = data['mode']
+        page = data['page']
+        total_pages = data['total_pages']
+        chapter_id = data['chapter_id']
+        position = data['position']
+        reopen = data['reopen']
+        clear_audio = data['clear_audio']
+        requested_status = data['status']
 
         existing = ReadingProgress.objects.filter(user=request.user, book=book).first()
         next_status = ReadingProgress.Status.READING
@@ -395,13 +533,38 @@ class ReadingProgressAPIView(APIView):
 
         defaults = {
             'mode': mode,
-            'page': page,
-            'chapter_id': chapter_id,
-            'position': position,
             'status': next_status,
         }
-        if total_pages is not None:
-            defaults['total_pages'] = total_pages
+
+        # Listen owns audio bookmark but must not clobber flip/pdf page from a stale client.
+        # Flip/pdf own page but must not clobber React listen position/chapter_id.
+        if mode == ReadingProgress.Mode.LISTEN:
+            defaults['chapter_id'] = chapter_id
+            defaults['position'] = position
+            if existing:
+                defaults['page'] = existing.page
+                if existing.total_pages is not None:
+                    defaults['total_pages'] = existing.total_pages
+            else:
+                defaults['page'] = page
+                if total_pages is not None:
+                    defaults['total_pages'] = total_pages
+        elif clear_audio:
+            defaults['page'] = page
+            defaults['chapter_id'] = chapter_id
+            defaults['position'] = position
+            if total_pages is not None:
+                defaults['total_pages'] = total_pages
+        else:
+            defaults['page'] = page
+            if total_pages is not None:
+                defaults['total_pages'] = total_pages
+            if existing:
+                defaults['chapter_id'] = existing.chapter_id
+                defaults['position'] = existing.position
+            else:
+                defaults['chapter_id'] = chapter_id
+                defaults['position'] = position
 
         progress, _created = ReadingProgress.objects.update_or_create(
             user=request.user,
@@ -418,7 +581,6 @@ class ReadingStatusAPIView(APIView):
     authentication_classes = [
         CSRFEnforcedAuthentication,
         JWTCookieAuthentication,
-        SessionAuthentication,
     ]
 
     def put(self, request, slug):
@@ -480,3 +642,61 @@ class ReadingStatusAPIView(APIView):
             )
         progress.delete()
         return Response({'exists': False, 'status': None}, status=status.HTTP_200_OK)
+
+
+class BookReaderManifestAPIView(APIView):
+    """Entitlement-gated payload for the React immersive reader."""
+
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTCookieAuthentication]
+
+    def get(self, request, slug):
+        book = get_object_or_404(
+            Book.objects.prefetch_related('translations', 'audio_chapters'),
+            slug=slug,
+            is_published=True,
+        )
+        translation = book.get_translation(DISPLAY_LANG)
+        if not translation or not translation.body.strip():
+            return Response(
+                {'detail': 'Translation not available.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not user_can_access_book(request.user, book):
+            return Response(
+                {'detail': 'Purchase required to access this book.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        audio_chapters = book.get_audio_chapters_payload(include_urls=True)
+        audio_url = audio_chapters[0]['url'] if audio_chapters else ''
+        progress = ReadingProgress.objects.filter(user=request.user, book=book).first()
+        progress_payload = (
+            serialize_progress_payload(progress)
+            if progress
+            else {'exists': False, 'status': None}
+        )
+
+        return Response(
+            {
+                'slug': book.slug,
+                'title': translation.title,
+                'author_name': book.author_name,
+                'category': book.category,
+                'category_label': category_label_uz(book.category),
+                'published_year': book.published_year,
+                'body': translation.body,
+                'audio_sync': translation.audio_sync or [],
+                'audio_chapters': audio_chapters,
+                'pdf_url': book.gated_pdf_url() if book.has_pdf() else '',
+                'audio_url': audio_url,
+                'has_access': True,
+                'has_pdf': book.has_pdf(),
+                'has_audio': book.has_audio(),
+                'sentence_wrap': bool(audio_url),
+                'read_url': f'/library/{book.slug}/read/',
+                'detail_url': f'/library/{book.slug}/',
+                'reading_progress': progress_payload,
+            }
+        )

@@ -1,0 +1,65 @@
+.pdf-reader-mode.book-reader {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: 9.5rem 1rem 2rem;
+  background: var(--reader-bg, #121212);
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 720px) {
+  .pdf-reader-mode.book-reader {
+    padding-top: 11.5rem;
+    padding-bottom: 1.5rem;
+  }
+}
+
+.pdf-reader {
+  --pdf-zoom: 1;
+  width: min(940px, 96vw);
+  max-height: 72vh;
+  overflow: auto;
+  margin: 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: #fff;
+  color: #171717;
+  padding: 1rem;
+}
+
+.pdf-reader__state {
+  padding: 1rem;
+  text-align: center;
+  color: #444;
+}
+
+.pdf-reader__viewport {
+  transform: scale(var(--pdf-zoom));
+  transform-origin: top center;
+}
+
+.pdf-reader__page {
+  padding: 1.25rem;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  margin-bottom: 1rem;
+  border-radius: 10px;
+}
+
+.pdf-reader__page-number {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.pdf-reader__canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.pdf-reader-mode__empty {
+  padding: 2rem 1.5rem;
+  opacity: 0.8;
+}

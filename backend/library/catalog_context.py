@@ -2,7 +2,7 @@
 
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Prefetch, Q
+from django.db.models import Avg, Count, Prefetch, Q
 
 from .models import Book, BookTranslation
 
@@ -10,7 +10,7 @@ VALID_CATEGORIES = {code for code, _label in Book.Category.choices}
 PAGE_SIZE = 24
 DISPLAY_LANG = BookTranslation.Language.UZ
 MAX_SEARCH_QUERY_LENGTH = 200
-CATEGORY_SHELVES_CACHE_KEY = 'catalog:category_shelves:v1'
+CATEGORY_SHELVES_CACHE_KEY = 'catalog:category_shelves:v2'
 CATEGORY_SHELVES_CACHE_TTL = 60
 
 
@@ -25,6 +25,10 @@ def published_books_queryset():
         .filter(translations__language=DISPLAY_LANG)
         .exclude(translations__title='')
         .exclude(translations__body='')
+        .annotate(
+            avg_rating=Avg('reviews__rating'),
+            review_total=Count('reviews', distinct=True),
+        )
         .distinct()
     )
 

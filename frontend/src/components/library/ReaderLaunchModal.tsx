@@ -1,13 +1,30 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import {
   fetchBookDetail,
   getReadingProgress,
   saveReadingProgress,
   setReadingStatus,
 } from '../../api/library'
-import { buildDjangoReadHref } from '../../lib/readerOrigin'
+import { buildReadHref, type ReaderLaunchMode } from '../../lib/readerOrigin'
+import type {
+  BookDetailResponse,
+  LibraryBookView,
+  ReadingStatus,
+} from '../../types/library'
+import {
+  readerModeKey,
+  readerModeKeyLegacy,
+  readerPageKey,
+  readerPageKeyLegacy,
+  storageGet,
+  storageRemove,
+  storageSet,
+} from '../../lib/storageKeys'
+import BookReviewsPanel from './BookReviewsPanel'
 
-function formatDuration(seconds) {
+type LaunchBook = LibraryBookView | BookDetailResponse
+
+function formatDuration(seconds: number | null | undefined) {
   if (!seconds || !Number.isFinite(seconds)) return ''
   const total = Math.round(seconds)
   const hours = Math.floor(total / 3600)
@@ -18,9 +35,9 @@ function formatDuration(seconds) {
   return `${secs} soniya`
 }
 
-function getSavedPageIndex(slug) {
+function getSavedPageIndex(slug: string) {
   try {
-    const raw = localStorage.getItem(`luma-reader:${slug}:page`)
+    const raw = storageGet(localStorage, readerPageKey(slug), readerPageKeyLegacy(slug))
     const idx = parseInt(raw || '0', 10)
     return Number.isNaN(idx) ? 0 : Math.max(0, idx)
   } catch {
@@ -28,46 +45,63 @@ function getSavedPageIndex(slug) {
   }
 }
 
-function getFormats(pdfUrl, audioUrl) {
+function getFormats(pdfUrl: string, audioUrl: string) {
   const formats = ['Matn']
   if (pdfUrl) formats.push('PDF')
   if (audioUrl) formats.push('Audio')
   return formats.join(' · ')
 }
 
-function mediaReady(status, hasFile) {
+function mediaReady(status: string | null | undefined, hasFile: boolean) {
   const s = status || 'pending'
   if (s === 'ready' || s === 'legacy') return true
   if (hasFile && (s === 'pending' || !status)) return true
   return Boolean(hasFile && s === 'ready')
 }
 
-function mediaPreparing(status) {
+function mediaPreparing(status: string | null | undefined) {
   const s = status || 'pending'
   return s === 'pending' || s === 'generating'
 }
 
-function mediaFailed(status) {
+function mediaFailed(status: string | null | undefined) {
   return (status || '') === 'failed'
+}
+
+export type ReaderLaunchModalProps = {
+  book: LaunchBook | null | undefined
+  open: boolean
+  onClose?: () => void
+  onStatusChange?: () => void
 }
 
 /**
  * Reader launch modal — Continue / Listen / Start over / PDF / reading modes.
- * Continue navigates to the Django HTML reader until React reader exists.
+ * Continue uses buildReadHref (React immersive reader).
  */
-export default function ReaderLaunchModal({ book, open, onClose, onStatusChange }) {
-  const dialogRef = useRef(null)
-  const [audioDurationSec, setAudioDurationSec] = useState(null)
+export default function ReaderLaunchModal({
+  book,
+  open,
+  onClose,
+  onStatusChange,
+}: ReaderLaunchModalProps) {
+  const dialogRef = useRef<HTMLElement>(null)
+  const [audioDurationSec, setAudioDurationSec] = useState<number | null>(null)
   const [audioDurationFailed, setAudioDurationFailed] = useState(false)
-  const [liveBook, setLiveBook] = useState(book)
+  const [confirmRestart, setConfirmRestart] = useState(false)
+  const [liveBook, setLiveBook] = useState<LaunchBook | null | undefined>(book)
   const [pageIndex, setPageIndex] = useState(0)
-  const [totalPages, setTotalPages] = useState(null)
-  const [readingStatus, setReadingStatusState] = useState(null)
+  const [totalPages, setTotalPages] = useState<number | null>(null)
+  const [readingStatus, setReadingStatusState] = useState<ReadingStatus | null>(null)
   const [finishBusy, setFinishBusy] = useState(false)
 
   useEffect(() => {
     setLiveBook(book)
   }, [book])
+
+  useEffect(() => {
+    if (!open) setConfirmRestart(false)
+  }, [open])
 
   const slug = liveBook?.slug || book?.slug || ''
 
@@ -80,13 +114,18 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
       try {
         const { response, data } = await getReadingProgress(slug)
         if (cancelled) return
-        if (response.ok && data?.exists) {
+        if (response.ok && data && data.exists) {
           const serverPage = Math.max(0, Number(data.page) || 0)
           setPageIndex(serverPage)
           setTotalPages(data.total_pages != null ? Number(data.total_pages) : null)
           setReadingStatusState(data.status || null)
           try {
-            localStorage.setItem(`luma-reader:${slug}:page`, String(serverPage))
+            storageSet(
+              localStorage,
+              readerPageKey(slug),
+              String(serverPage),
+              readerPageKeyLegacy(slug),
+            )
           } catch {
             /* ignore */
           }
@@ -121,7 +160,7 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
       }
     }
 
-    function stillPreparing(data) {
+    function stillPreparing(data: BookDetailResponse | null | undefined) {
       if (!data) return true
       const pdf = data.pdf_generation_status || 'pending'
       const audio = data.audio_generation_status || 'pending'
@@ -150,7 +189,8 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
   useEffect(() => {
     if (!open) return undefined
     document.body.classList.add('has-launch-modal')
-    dialogRef.current?.querySelector('#launch-read')?.focus()
+    const focusTarget = dialogRef.current?.querySelector('#launch-read')
+    if (focusTarget instanceof HTMLElement) focusTarget.focus()
     return () => {
       document.body.classList.remove('has-launch-modal')
     }
@@ -158,7 +198,7 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
 
   useEffect(() => {
     if (!open) return undefined
-    function onKey(event) {
+    function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose?.()
     }
     document.addEventListener('keydown', onKey)
@@ -199,7 +239,7 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
     const probe = new Audio()
     probe.preload = 'metadata'
     let settled = false
-    const finishOk = (seconds) => {
+    const finishOk = (seconds: number) => {
       if (settled) return
       settled = true
       setAudioDurationSec(seconds)
@@ -256,17 +296,15 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
       : null
 
   async function persistProgressReset() {
-    try {
-      localStorage.removeItem(`luma-reader:${slug}:page`)
-    } catch {
-      /* ignore */
-    }
+    storageRemove(localStorage, readerPageKey(slug), readerPageKeyLegacy(slug))
     setPageIndex(0)
     try {
       await saveReadingProgress(slug, {
         mode: 'flip',
         page: 0,
         position: 0,
+        chapter_id: null,
+        clear_audio: true,
         reopen: true,
         status: 'reading',
       })
@@ -309,7 +347,7 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
     }
   }
 
-  function navigateRead(mode, autoplay, resetProgress) {
+  function navigateRead(mode: ReaderLaunchMode, autoplay: boolean, resetProgress: boolean) {
     if (!hasAccess) return
     if (mode === 'page' && !pdfReady) return
     if (autoplay && !audioReady) return
@@ -320,11 +358,16 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
         await ensureReadingStatus()
       }
       try {
-        localStorage.setItem(`luma-reader:${slug}:mode`, mode === 'page' ? 'pdf' : 'flip')
+        storageSet(
+          localStorage,
+          readerModeKey(slug),
+          mode === 'page' ? 'pdf' : 'flip',
+          readerModeKeyLegacy(slug),
+        )
       } catch {
         /* ignore */
       }
-      window.location.href = buildDjangoReadHref(readUrl, mode, autoplay)
+      window.location.href = buildReadHref(readUrl, mode, autoplay)
     }
     go()
   }
@@ -418,11 +461,11 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
             </div>
             <div className="reader-launch-modal__cta-row">
               <a
-                href={readDisabled ? undefined : buildDjangoReadHref(readUrl, 'focus', false)}
+                href={readDisabled ? undefined : buildReadHref(readUrl, 'focus', false)}
                 className="reader-launch-modal__btn reader-launch-modal__btn--primary"
                 id="launch-read"
                 aria-disabled={readDisabled}
-                onClick={(event) => {
+                onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                   event.preventDefault()
                   if (readDisabled) return
                   navigateRead('focus', false, false)
@@ -463,11 +506,33 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
                 className="reader-launch-modal__btn reader-launch-modal__btn--ghost"
                 id="launch-start-over"
                 disabled={!hasAccess}
-                onClick={() => navigateRead('focus', false, true)}
+                onClick={() => {
+                  if (!hasAccess) return
+                  setConfirmRestart(true)
+                }}
               >
                 {hasAccess ? 'Boshidan boshlash' : 'Boshidan (yopiq)'}
               </button>
             </div>
+            {confirmRestart && hasAccess ? (
+              <div className="reader-launch-modal__restart-confirm" role="status">
+                <p>Ishonchingiz komilmi? O‘qish joyi boshiga qaytariladi.</p>
+                <button
+                  type="button"
+                  className="reader-launch-modal__btn reader-launch-modal__btn--primary"
+                  onClick={() => navigateRead('focus', false, true)}
+                >
+                  Ha, boshidan
+                </button>
+                <button
+                  type="button"
+                  className="reader-launch-modal__btn reader-launch-modal__btn--ghost"
+                  onClick={() => setConfirmRestart(false)}
+                >
+                  Bekor qilish
+                </button>
+              </div>
+            ) : null}
             {nearEnd ? (
               <div className="reader-launch-modal__finish-prompt" role="status">
                 <p>Oxirgi sahifadasiz. Kitobni tugatilgan deb belgilaysizmi?</p>
@@ -489,7 +554,7 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
               className={`reader-launch-modal__download${hasAccess && pdfReady && pdfUrl ? '' : ' is-disabled'}`}
               id="launch-download"
               aria-disabled={pdfActionsDisabled || !pdfUrl}
-              onClick={(event) => {
+              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                 if (pdfActionsDisabled || !pdfUrl) event.preventDefault()
               }}
             >
@@ -612,6 +677,8 @@ export default function ReaderLaunchModal({ book, open, onClose, onStatusChange 
             </dl>
           </section>
         </div>
+
+        {slug ? <BookReviewsPanel slug={slug} variant="modal" maxComments={3} /> : null}
       </section>
     </div>
   )

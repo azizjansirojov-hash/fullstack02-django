@@ -1,0 +1,235 @@
+/* Flip-book reader — ported from backend/static/library/css/reader.css */
+
+/*
+ * Reader tokens live on :root (Django parity) so document.body-appended
+ * nodes (.book-reader__measure) inherit font/padding/page colors.
+ * Do not scope these only under .flip-book-mode — that collapses pagination.
+ */
+:root {
+  --flip-zoom: 1;
+  --reader-bg: #121212;
+  --reader-page: #1a1a1a;
+  --reader-page-text: #e0e0e0;
+  --reader-spine: rgba(0, 0, 0, 0.45);
+  --reader-font-size: 1.05rem;
+  --reader-line-height: 1.75;
+  --reader-page-padding: 2.4rem 2.1rem;
+}
+
+.flip-book-mode.book-reader {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 100dvh;
+  padding: 9.5rem 1rem 2rem;
+  background: var(--reader-bg);
+  position: relative;
+  z-index: 2;
+}
+
+.flip-book-mode.book-reader.is-light {
+  --reader-bg: #ece8e1;
+  --reader-page: #f7f3ec;
+  --reader-page-text: #1c1917;
+  --reader-spine: rgba(28, 25, 23, 0.18);
+}
+
+@media (max-width: 720px) {
+  .flip-book-mode.book-reader {
+    padding-top: 11.5rem;
+    padding-bottom: 1.5rem;
+  }
+}
+
+.flip-book-mode .book-reader__stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: min(96vw, 1100px);
+  flex: 1;
+  justify-content: center;
+  overflow: auto;
+  padding: 1rem 0 2rem;
+}
+
+.flip-book-mode .book-reader__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+.flip-book-mode .book-reader__loading.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.flip-book-mode .book-reader__loading-spread {
+  display: flex;
+  gap: 0;
+  width: min(90vw, 900px);
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.flip-book-mode .book-reader__loading-page {
+  flex: 1;
+  background: linear-gradient(110deg, var(--reader-page) 0%, #222 40%, var(--reader-page) 80%);
+  background-size: 200% 100%;
+  animation: reader-shimmer 1.4s ease-in-out infinite;
+}
+
+.flip-book-mode .book-reader__loading-page:first-child {
+  border-right: 1px solid var(--reader-spine);
+}
+
+@keyframes reader-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.flip-book-mode .book-reader__mount-host {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.flip-book-mode .book-reader__mount {
+  --flip-zoom: inherit;
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  filter: drop-shadow(0 28px 56px rgba(0, 0, 0, 0.5));
+  transform: scale(var(--flip-zoom, 1));
+  transform-origin: center center;
+}
+
+/* Measure box is appended to document.body (same as Django reader.js) —
+   do not nest .book-reader__measure under .flip-book-mode or pagination
+   sees unstyled text and collapses the book to a single page. */
+.flip-book-mode .book-reader__mount .page,
+.book-reader__measure .page-content {
+  background: var(--reader-page);
+  color: var(--reader-page-text);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.book-reader__measure .page-content {
+  height: 100%;
+}
+
+.flip-book-mode .book-reader__mount .page-content,
+.book-reader__measure .page-content {
+  padding: var(--reader-page-padding);
+  font-family: var(--lib-serif, 'Literata', Georgia, serif);
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
+  text-align: justify;
+  hyphens: auto;
+  overflow: hidden;
+}
+
+.flip-book-mode .book-reader__mount .page-content p,
+.book-reader__measure .page-content p {
+  margin: 0 0 0.95em;
+  text-indent: 1.5em;
+}
+
+.flip-book-mode .book-reader__mount .page-content p:first-child,
+.book-reader__measure .page-content p:first-child {
+  text-indent: 0;
+}
+
+.flip-book-mode .book-reader__mount .page-content {
+  height: 100%;
+}
+
+.flip-book-mode .book-reader__mount .stf__parent {
+  border-radius: 4px;
+}
+
+.flip-book-mode .book-reader__counter {
+  margin-top: 1.1rem;
+  padding: 0.38rem 1rem;
+  border-radius: 980px;
+  background: rgba(0, 0, 0, 0.72);
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--lib-sans, 'Sora', sans-serif);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.flip-book-mode .book-reader__nav-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28%;
+  z-index: 5;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.flip-book-mode .book-reader__nav-zone--prev {
+  left: 0;
+}
+
+.flip-book-mode .book-reader__nav-zone--next {
+  right: 0;
+}
+
+.flip-book-mode .book-reader__nav-zone:focus-visible {
+  outline: 2px solid rgba(79, 224, 138, 0.4);
+  outline-offset: -4px;
+}
+
+.flip-book-mode .reader-sentence.is-active {
+  background: rgba(214, 255, 69, 0.35);
+  transition: background-color 0.2s ease;
+}
+
+.flip-reader-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.flip-reader-view--audio-open .book-reader__stage {
+  padding-bottom: 11rem;
+}
+
+.flip-reader-view__audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.flip-reader-view__audio-shell[hidden] {
+  display: none !important;
+}
+
+.audio-playback__btn--close {
+  margin-left: 0.25rem;
+}

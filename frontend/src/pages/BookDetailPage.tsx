@@ -1,24 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import AppShell from '../components/layout/AppShell'
 import ReaderLaunchModal from '../components/library/ReaderLaunchModal'
+import ReviewSection from '../components/library/ReviewSection'
 import {
   fetchBookDetail,
   removePlanned,
   setReadingStatus,
 } from '../api/library'
-import { buildDjangoReadHref } from '../lib/readerOrigin'
+import { buildReadHref } from '../lib/readerOrigin'
+import type { BookDetailResponse } from '../types/library'
 import '../assets/css/library.css'
 
 /**
- * Book detail — port of Django book_detail.html (preview + launch actions).
+ * Book detail — preview + launch actions inside DashboardLayout chrome.
  */
 export default function BookDetailPage() {
-  const { slug } = useParams()
-  const [book, setBook] = useState(null)
-  const [error, setError] = useState(null)
+  const { slug = '' } = useParams<{ slug: string }>()
+  const [book, setBook] = useState<BookDetailResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [launchBook, setLaunchBook] = useState(null)
+  const [launchBook, setLaunchBook] = useState<BookDetailResponse | null>(null)
   const [statusBusy, setStatusBusy] = useState(false)
 
   useEffect(() => {
@@ -30,18 +31,14 @@ export default function BookDetailPage() {
         const { response, data } = await fetchBookDetail(slug)
         if (cancelled) return
         if (!response.ok) {
-          setError(
-            response.status === 401 || response.status === 403
-              ? 'Kirish talab qilinadi.'
-              : `Kitob yuklanmadi (${response.status})`
-          )
+          setError((data as { detail?: string } | null)?.detail || `Kitob yuklanmadi (${response.status})`)
           setBook(null)
           return
         }
         setBook(data)
-      } catch (err) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setError(err.message || 'Network error')
+          setError(err instanceof Error ? err.message : 'Network error')
           setBook(null)
         }
       } finally {
@@ -53,17 +50,30 @@ export default function BookDetailPage() {
     }
   }, [slug])
 
-  const initial = (book?.title || book?.slug || 'K').trim().charAt(0).toUpperCase()
-  const hasAccess = Boolean(book?.has_access)
-  const canOpenReader = Boolean(book?.can_read && hasAccess)
-  const readHref = canOpenReader && book?.read_url
-    ? buildDjangoReadHref(book.read_url, 'focus', false)
-    : '#'
+  useEffect(() => {
+    if (book?.title) {
+      document.title = `${book.title} · Libro.UZ`
+    } else {
+      document.title = 'Kitob · Libro.UZ'
+    }
+  }, [book?.title])
+
   const readingStatus = book?.reading_status || null
+  const hasAccess = Boolean(book?.has_access)
+  const canOpenReader = hasAccess && Boolean(book?.can_read)
+  const readHref = book
+    ? buildReadHref(book.read_url || `/library/${book.slug}/read/`, 'focus', false)
+    : '#'
+  const initial = (book?.title || book?.slug || 'K').trim().charAt(0).toUpperCase()
 
   async function refreshStatus() {
-    const { response, data } = await fetchBookDetail(slug)
-    if (response.ok) setBook(data)
+    if (!slug) return
+    try {
+      const { response, data } = await fetchBookDetail(slug)
+      if (response.ok && data) setBook(data)
+    } catch {
+      /* ignore */
+    }
   }
 
   async function handleAddToPlan() {
@@ -73,13 +83,13 @@ export default function BookDetailPage() {
       if (readingStatus === 'planned') {
         const { response } = await removePlanned(book.slug)
         if (!response.ok) throw new Error('Rejadan olib tashlanmadi')
-      } else if (!readingStatus) {
+      } else {
         const { response } = await setReadingStatus(book.slug, 'planned')
         if (!response.ok) throw new Error('Rejaga qo‘shilmadi')
       }
       await refreshStatus()
-    } catch (err) {
-      setError(err.message || 'Amaliyot bajarilmadi')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Amaliyot bajarilmadi')
     } finally {
       setStatusBusy(false)
     }
@@ -92,8 +102,8 @@ export default function BookDetailPage() {
       const { response } = await setReadingStatus(book.slug, 'finished')
       if (!response.ok) throw new Error('Tugatilgan deb belgilanmadi')
       await refreshStatus()
-    } catch (err) {
-      setError(err.message || 'Amaliyot bajarilmadi')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Amaliyot bajarilmadi')
     } finally {
       setStatusBusy(false)
     }
@@ -106,38 +116,15 @@ export default function BookDetailPage() {
       const { response } = await setReadingStatus(book.slug, 'reading')
       if (!response.ok) throw new Error('Qaytarilmadi')
       await refreshStatus()
-    } catch (err) {
-      setError(err.message || 'Amaliyot bajarilmadi')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Amaliyot bajarilmadi')
     } finally {
       setStatusBusy(false)
     }
   }
 
   return (
-    <AppShell
-      title={book?.title || 'Kitob'}
-      metaDescription={book?.summary || 'Libro.UZ Kutubxonasida o‘qing.'}
-      wordmarkTo="/library"
-      navCenter={
-        <div className="nav__center nav__center--library">
-          <Link className="nav__link" to="/library">
-            Kutubxona
-          </Link>
-          <span className="nav__muted">Kitob</span>
-        </div>
-      }
-      navStatus={
-        <span className="status-chip">
-          <span className="status-chip__dot" />
-          Ko‘rib chiqish
-        </span>
-      }
-      navAction={
-        <Link className="nav__cta" to="/library">
-          Javonga qaytish
-        </Link>
-      }
-    >
+    <div className="book-detail-page">
       {loading && (
         <section className="library-empty">
           <div className="library-empty__panel">
@@ -201,17 +188,6 @@ export default function BookDetailPage() {
                 </p>
               ) : null}
               <div className="reader-actions">
-                {canOpenReader ? (
-                  <a className="reader-hero__read" href={readHref}>
-                    O‘qishni davom ettirish
-                  </a>
-                ) : !hasAccess ? (
-                  <button type="button" className="reader-hero__read" disabled>
-                    Sotib olish kerak
-                  </button>
-                ) : (
-                  <p className="reader-hero__unavailable">O‘qiladigan kontent hali mavjud emas.</p>
-                )}
                 <button
                   type="button"
                   className="reader-hero__read reader-hero__read--ghost"
@@ -228,6 +204,17 @@ export default function BookDetailPage() {
                 >
                   {hasAccess ? 'Boshidan boshlash' : 'Boshidan (yopiq)'}
                 </button>
+                {canOpenReader ? (
+                  <a className="reader-hero__read reader-hero__read--ghost" href={readHref}>
+                    O‘qishni davom ettirish
+                  </a>
+                ) : !hasAccess ? (
+                  <button type="button" className="reader-hero__read reader-hero__read--ghost" disabled>
+                    Sotib olish kerak
+                  </button>
+                ) : (
+                  <p className="reader-hero__unavailable">O‘qiladigan kontent hali mavjud emas.</p>
+                )}
                 {!readingStatus || readingStatus === 'planned' ? (
                   <button
                     type="button"
@@ -276,12 +263,49 @@ export default function BookDetailPage() {
         </article>
       )}
 
+      {!loading && book && Array.isArray(book.similar_books) && book.similar_books.length > 0 && (
+        <section className="similar-books" aria-labelledby="similar-books-heading">
+          <div className="similar-books__inner">
+            <h2 className="similar-books__heading" id="similar-books-heading">
+              O&apos;xshash kitoblar
+            </h2>
+            <div className="similar-books__grid">
+              {book.similar_books.map((sim) => {
+                const simInitial = (sim.title || sim.slug || 'K').trim().charAt(0).toUpperCase()
+                return (
+                  <Link
+                    key={sim.slug}
+                    className="similar-books__card"
+                    to={`/library/${encodeURIComponent(sim.slug)}/`}
+                  >
+                    <div className="similar-books__cover">
+                      {sim.cover_url ? (
+                        <img src={sim.cover_url} alt={`${sim.title} muqovasi`} />
+                      ) : (
+                        <div className="similar-books__placeholder" aria-hidden="true">
+                          <span>{simInitial}</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="similar-books__title">{sim.title || sim.slug}</p>
+                    <p className="similar-books__author">{sim.author_name}</p>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!loading && book && book.title ? <ReviewSection slug={slug} /> : null}
+
       <ReaderLaunchModal
         book={launchBook}
         open={Boolean(launchBook)}
         onClose={() => setLaunchBook(null)}
         onStatusChange={refreshStatus}
       />
-    </AppShell>
+    </div>
   )
 }
+

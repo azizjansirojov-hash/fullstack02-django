@@ -1,0 +1,64 @@
+/* Libro.UZ brand lockup — lime/green gradient matching --grad / --lime */
+
+.brand-lockup {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2em;
+  line-height: 1;
+  text-decoration: none;
+  user-select: none;
+}
+
+.brand-lockup__icon {
+  display: block;
+  width: auto;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.brand-lockup__wordmark {
+  display: block;
+  max-width: 100%;
+  font-family: "Sora", var(--font, system-ui, sans-serif);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-align: center;
+  white-space: nowrap;
+  background: var(--grad, linear-gradient(100deg, #e4ff54 0%, #4fe08a 55%, #2fd39b 100%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand-lockup__wordmark .brand-lockup__dot {
+  /* Keep gradient continuous across the whole wordmark */
+  background: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Header / sidebar */
+.brand-lockup--sm .brand-lockup__icon {
+  width: 28px;
+  height: 28px;
+}
+
+.brand-lockup--sm .brand-lockup__wordmark {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+/* Splash */
+.brand-lockup--lg .brand-lockup__icon {
+  width: clamp(72px, 18vw, 112px);
+  height: auto;
+}
+
+.brand-lockup--lg .brand-lockup__wordmark {
+  font-size: clamp(14px, 3.2vw, 20px);
+  letter-spacing: 0.14em;
+  margin-top: 0.35em;
+}

@@ -1,0 +1,215 @@
+.reader-listen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 11rem;
+}
+
+.reader-listen__audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reader-listen__text {
+  flex: 1;
+  padding: 1.5rem 1.25rem 2rem;
+  max-width: 42rem;
+  margin: 0 auto;
+  line-height: 1.75;
+  font-family: 'Literata', Georgia, serif;
+  font-size: 1.05rem;
+}
+
+.reader-listen__text p {
+  margin: 0 0 1.1rem;
+}
+
+.reader-listen__empty {
+  padding: 2rem 1.5rem;
+  opacity: 0.8;
+}
+
+.reader-sentence.is-active {
+  background: rgba(214, 255, 69, 0.35);
+  transition: background-color 0.2s ease;
+}
+
+.audio-playback {
+  position: fixed;
+  left: 50%;
+  bottom: 1.2rem;
+  transform: translateX(-50%);
+  z-index: 25;
+  width: min(920px, calc(100vw - 1.5rem));
+}
+
+.audio-playback__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+  padding: 0.75rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(8, 10, 14, 0.96);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.audio-playback__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d6ff45, #9ee022);
+  color: #111;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.audio-playback__toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: currentColor;
+}
+
+.audio-playback__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 5.5rem;
+}
+
+.audio-playback__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.audio-playback__count,
+.audio-playback__chapter {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #f3f5f8;
+}
+
+.audio-playback__chapter {
+  max-width: 14rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audio-playback__seek {
+  flex: 1 1 160px;
+  min-width: 120px;
+  accent-color: #d6ff45;
+}
+
+.audio-playback__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.audio-playback__btn {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f3f5f8;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.audio-playback__btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.audio-playback__error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #ff8a8a;
+}
+
+.audio-playback__playlist {
+  flex: 1 1 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 9.5rem;
+  overflow-y: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.audio-playback__track {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(243, 245, 248, 0.82);
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.audio-playback__track:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.audio-playback__track.is-active {
+  background: rgba(214, 255, 69, 0.14);
+  border-color: rgba(214, 255, 69, 0.35);
+  color: #f3f5f8;
+}
+
+.audio-playback__track-index {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.audio-playback__track.is-active .audio-playback__track-index {
+  background: #d6ff45;
+  color: #111;
+}
+
+.audio-playback__track-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-shell__mode-note {
+  margin: 0 1.5rem 0.5rem;
+  font-size: 0.85rem;
+  opacity: 0.65;
+}

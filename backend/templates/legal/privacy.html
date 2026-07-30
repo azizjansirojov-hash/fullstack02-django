@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Maxfiylik siyosati · Libro.UZ{% endblock %}
+{% block content %}
+<article class="legal-page" style="max-width:42rem;margin:2rem auto;padding:1rem;line-height:1.6">
+  <h1>Maxfiylik siyosati</h1>
+  <p><em>Draft for lawyer review — not final legal advice.</em></p>
+  <p>
+    We collect account data (username, email), authentication cookies (HttpOnly JWT),
+    and reading progress needed to operate the bookstore.
+  </p>
+  <h2>What we store</h2>
+  <ul>
+    <li>Account credentials (hashed passwords)</li>
+    <li>Reading progress and shelf status</li>
+    <li>Server logs for security and generation operations</li>
+  </ul>
+  <h2>Cookies</h2>
+  <p>
+    Access and refresh tokens are stored in HttpOnly cookies. CSRF cookies protect
+    state-changing API calls.
+  </p>
+  <h2>Contact</h2>
+  <p>
+    Privacy questions or data requests: use the
+    <a href="/rights-report/">contact / rights form</a> or email the address shown there.
+  </p>
+</article>
+{% endblock %}
