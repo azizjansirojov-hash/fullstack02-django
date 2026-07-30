@@ -1,91 +1,110 @@
-# Production deploy checklist (Libro.UZ bookstore)
+# DEPLOY.md — Libro.UZ production & Docker
 
-This stack is a **commercial bookstore**. Treat secrets, TLS, SMTP, and media
-backups as mandatory before inviting real customers.
+## Stack
 
-## Required environment
+| Service | Role |
+|---------|------|
+| `web` | Gunicorn — SPA (`FRONTEND_DIST`) + APIs + gated media |
+| `worker` | `process_generation_jobs --loop` (PDF/TTS) — **required** |
+| `db` | Postgres 16 |
+| `redis` | Cache + DRF throttle counters (required when `DEBUG=False`; password required) |
+| `migrate` | One-shot migrate before web/worker |
 
-Copy [`backend/.env.example`](backend/.env.example) → `backend/.env` and set:
-
-| Variable | Requirement |
-|----------|-------------|
-| `SECRET_KEY` | Long random string (not `change-me…`) |
-| `DEBUG` | `False` in production |
-| `ALLOWED_HOSTS` | Explicit hosts — **never** `*` |
-| `POSTGRES_PASSWORD` | Strong password (Compose has **no** default) |
-| `EMAIL_BACKEND` + `EMAIL_HOST_*` | Real SMTP when `DEBUG=False` |
-| `USE_TLS` | `1` when terminating HTTPS in front of Gunicorn |
-
-Startup **fails loudly** if production uses a weak `SECRET_KEY`, `ALLOWED_HOSTS=*`,
-or a console email backend without `ALLOW_CONSOLE_EMAIL=1`.
-
-## Docker
+## Quick Compose
 
 ```bash
-# Interpolation reads backend/.env for POSTGRES_* and SECRET_KEY
+cp backend/.env.example backend/.env
+# Set strong SECRET_KEY, POSTGRES_PASSWORD, and REDIS_PASSWORD (not placeholders)
+# POSTGRES_DB / POSTGRES_USER defaults are now "libro" (was "luma")
+
 docker compose --env-file backend/.env up --build
 ```
 
-Services:
+Open **http://127.0.0.1:8000/library** — React SPA.
 
-- `web` — Gunicorn (SPA + APIs + reader) on `:8000`
-- `worker` — `process_generation_jobs --loop` (PDF/TTS). **Required.**
-- `db` — Postgres 16
-- `redis` — shared cache for DRF throttles and generation quotas across Gunicorn workers
+Local Compose typically uses `USE_TLS=0` and `ALLOW_CONSOLE_EMAIL=1` for HTTP smoke tests.
+**Production:** set `ALLOW_CONSOLE_EMAIL=0` and configure SMTP. Django refuses to boot with a console email backend when `DEBUG=False` unless `ALLOW_CONSOLE_EMAIL=1`.
 
-Local Compose defaults `USE_TLS=0` so HTTP on localhost works. For a public
-host, put TLS in front (below) and set `USE_TLS=1` in `.env`.
+### Host port binding
 
-## Redis (shared cache)
+Compose publishes `web` as **`127.0.0.1:8000:8000`** (loopback only). The process still listens on `0.0.0.0` *inside* the container so the TLS nginx overlay can reach `web:8000` on the Docker network.
 
-Gunicorn runs with **2 workers**. Django's default LocMemCache is **per-process**,
-so auth/password-reset throttles and regenerate quotas would not be shared.
+To intentionally expose the app on the LAN (not recommended without a reverse proxy):
 
-Compose sets `REDIS_URL=redis://redis:6379/1`. When `REDIS_URL` is set, Django
-uses `RedisCache`. Local `runserver` without Redis keeps LocMem (fine for a
-single process). Do not scale Gunicorn workers without Redis.
-
-## TLS termination (required for real users)
-
-Gunicorn speaks **HTTP** on `:8000`. Terminate TLS with nginx or Caddy, then
-proxy to the web container. See [`deploy/nginx.conf`](deploy/nginx.conf).
-
-When TLS is enabled:
-
-- Set `USE_TLS=1` so Django enables `SECURE_SSL_REDIRECT`, HSTS, and secure cookies
-- Forward `X-Forwarded-Proto: https` (sample nginx config does this)
-- Put your real hostname in `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`
-
-## SMTP (password reset)
-
-Console email is **local-only**. Production must use SMTP:
-
-```env
-DEBUG=False
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.example.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=...
-EMAIL_HOST_PASSWORD=...
-EMAIL_USE_TLS=True
-ALLOW_CONSOLE_EMAIL=0
+```yaml
+# override in a local compose fragment
+ports:
+  - "8000:8000"   # all interfaces
 ```
 
-## Generation worker
+### TLS overlay
 
-If the worker is down, `GenerationJob` rows stay `queued`. Staff can check:
+See [`deploy/docker-compose.tls.yml`](deploy/docker-compose.tls.yml) and [`deploy/nginx.conf`](deploy/nginx.conf). Generate a local cert with [`deploy/generate_selfsigned_cert.sh`](deploy/generate_selfsigned_cert.sh) when needed.
 
-- Django admin → Books / Generation jobs (stale queue warnings)
-- `GET /health/generation/` (staff session or JWT)
+## Environment variables (critical)
 
-## Backups
+| Variable | Notes |
+|----------|--------|
+| `SECRET_KEY` | Required; long random string |
+| `DEBUG` | `False` in production |
+| `ALLOWED_HOSTS` | Hostnames for the site |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Compose DB (defaults **`libro`**) |
+| `DATABASE_URL` | Built by Compose from `POSTGRES_*` |
+| `REDIS_PASSWORD` | Required for Compose Redis `--requirepass` |
+| `REDIS_URL` | Required when `DEBUG=False`; Compose sets `redis://:${REDIS_PASSWORD}@redis:6379/1` |
+| `FRONTEND_DIST` | Path to built SPA (`/app/frontend/dist` in Docker) |
+| `CSRF_TRUSTED_ORIGINS` | HTTPS origins of the SPA |
+| `DEFAULT_FROM_EMAIL` | Password-reset From address |
+| `EMAIL_*` | SMTP for real delivery; console backend prints links locally |
+| `ALLOW_CONSOLE_EMAIL` | **Must be `0` in production** |
+| `SPA_ORIGIN` | Absolute SPA origin for emails/redirects in Vite+Django local dev; empty/`same` = relative |
+| `TTS_PROVIDER` | Default `edge` |
 
-See [`scripts/backup_postgres_media.sh`](scripts/backup_postgres_media.sh) and
-restore notes at the bottom of that script. Back up **Postgres and media** —
-regenerating TTS for a full catalog is slow and rights-sensitive.
+Copy from [`backend/.env.example`](backend/.env.example). Do **not** commit real `.env` secrets.
 
-## TTS vendor risk
+### One-time Postgres rename (`luma` → `libro`)
 
-`TTS_PROVIDER=edge` uses unofficial `edge-tts`. Configure `TTS_PROVIDER` so a
-paid provider module can be added later without rewriting callers. Do not market
-narration SLAs on edge-tts alone.
+If an existing volume still uses database/user **`luma`**, do **not** only change `.env` — update the database first:
+
+```bash
+# Exact runnable helper (dump + ALTER DATABASE + role):
+chmod +x scripts/rename_postgres_luma_to_libro.sh
+POSTGRES_PASSWORD='your-current-password' ./scripts/rename_postgres_luma_to_libro.sh
+# Then set POSTGRES_DB=libro and POSTGRES_USER=libro in backend/.env and recreate app containers.
+```
+
+Alternative (fresh volume — data loss):
+
+```bash
+docker compose --env-file backend/.env down
+# After updating .env to libro / libro:
+docker volume rm fullstack02-django_postgres_data   # name may vary — check `docker volume ls`
+docker compose --env-file backend/.env up --build
+```
+
+## Production checklist
+
+- [ ] Strong `SECRET_KEY`, Postgres password, and `REDIS_PASSWORD`
+- [ ] `DEBUG=False`, `REDIS_URL` set (with password)
+- [ ] `ALLOW_CONSOLE_EMAIL=0` + real SMTP
+- [ ] TLS terminated (nginx or load balancer); `JWT_COOKIE_SECURE` / CSRF origins match HTTPS
+- [ ] `worker` service running (generation queue)
+- [ ] Media volume persisted (`media_data`)
+- [ ] Backups for Postgres + media
+- [ ] Health: `GET /health/generation/`
+- [ ] Confirm password-reset email links open `/password-reset/<uid>/<token>/` (SPA)
+
+## Local Vite + Django (dev)
+
+```bash
+npm install          # repo root
+npm run dev          # Django :8000 + Vite :5173
+# optional second terminal:
+cd backend && python manage.py process_generation_jobs --loop
+```
+
+See [README.md](README.md) for port conflicts and E2E.
+
+## Gated media
+
+`/library/media/...` must remain auth-gated (JWT cookie). Never expose book PDF/audio under open `/media/`.
