@@ -2,6 +2,7 @@
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.text import slugify
 
@@ -244,6 +245,7 @@ class Book(models.Model):
                         self.gated_chapter_audio_url(chapter.id) if include_urls else ''
                     ),
                     'order': chapter.order,
+                    'duration_seconds': chapter.duration_seconds,
                 }
                 for index, chapter in enumerate(chapters)
             ]
@@ -254,6 +256,7 @@ class Book(models.Model):
                     'title': '1-qism',
                     'url': self.gated_legacy_audio_url() if include_urls else '',
                     'order': 0,
+                    'duration_seconds': None,
                 }
             ]
         return []
@@ -533,6 +536,80 @@ class Purchase(models.Model):
 
     def __str__(self):
         return f'{self.user_id}:{self.book_id} {self.status}'
+
+    def save(self, *args, **kwargs):
+        previous = None
+        if self.pk:
+            previous = (
+                Purchase.objects.filter(pk=self.pk)
+                .values_list('status', flat=True)
+                .first()
+            )
+        super().save(*args, **kwargs)
+        if self.status == Purchase.Status.PAID and previous != Purchase.Status.PAID:
+            from .notifications import notify_purchase_paid
+
+            notify_purchase_paid(self)
+
+
+class Review(models.Model):
+    """One rating + optional text review per user per book."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+    )
+    book = models.ForeignKey(
+        Book,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    text = models.TextField(blank=True, max_length=2000, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'book'],
+                name='unique_user_book_review',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id}:{self.book_id} ★{self.rating}'
+
+
+class Notification(models.Model):
+    class Type(models.TextChoices):
+        AUDIO_READY = 'audio_ready', 'Audio ready'
+        PURCHASE_PAID = 'purchase_paid', 'Purchase paid'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    message = models.CharField(max_length=500)
+    type = models.CharField(max_length=32, choices=Type.choices, db_index=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    link_url = models.CharField(max_length=500, blank=True, default='')
+    book = models.ForeignKey(
+        Book,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='notifications',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class GenerationJob(models.Model):

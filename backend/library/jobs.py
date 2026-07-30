@@ -297,6 +297,13 @@ def run_job(job: GenerationJob) -> None:
                 'updated_at',
             ]
         )
+        if job.job_type in (
+            GenerationJob.JobType.AUDIO,
+            GenerationJob.JobType.ALL,
+        ):
+            from .notifications import notify_audio_ready
+
+            notify_audio_ready(book)
         logger.info('GenerationJob done: %s', result, extra=log_extra)
     except Exception as exc:
         logger.exception('GenerationJob failed', extra=log_extra)
