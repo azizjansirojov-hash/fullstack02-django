@@ -1,14 +1,19 @@
 # Use: docker compose --env-file backend/.env up --build
-# Requires SECRET_KEY and POSTGRES_PASSWORD in the compose --env-file (no weak defaults).
+# Requires SECRET_KEY, POSTGRES_*, and REDIS_PASSWORD in the compose --env-file (no weak defaults).
+#
+# WARNING: ALLOW_CONSOLE_EMAIL defaults to 1 for local Compose smoke tests.
+# Set ALLOW_CONSOLE_EMAIL=0 (and a real SMTP EMAIL_BACKEND) before any production deployment.
+# Django settings refuse console email when DEBUG=False unless ALLOW_CONSOLE_EMAIL=1.
 
 x-app-environment: &app-environment
   SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in the compose --env-file}
   DEBUG: "False"
   USE_TLS: "0"
+  # LOCAL DEFAULT ONLY — must be 0 in production (see warning above).
   ALLOW_CONSOLE_EMAIL: ${ALLOW_CONSOLE_EMAIL:-1}
   ALLOWED_HOSTS: localhost,127.0.0.1,web
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-  REDIS_URL: redis://redis:6379/1
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
   FRONTEND_DIST: /app/frontend/dist
   CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
   EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
@@ -34,8 +39,11 @@ services:
 
   redis:
     image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in backend/.env}
+    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\""]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep PONG"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -57,8 +65,10 @@ services:
 
   web:
     build: .
+    # Bind to loopback only — not exposed on the LAN. For intentional LAN access use
+    # "8000:8000" instead (see DEPLOY.md). TLS overlay nginx reaches web:8000 on the Docker network.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     # Optional local overrides; --env-file values in `environment` win for secrets.
     env_file:
       - path: backend/.env

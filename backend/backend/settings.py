@@ -141,6 +141,14 @@ if FRONTEND_DIST:
     if not FRONTEND_DIST.is_absolute():
         FRONTEND_DIST = (BASE_DIR.parent / FRONTEND_DIST).resolve()
 
+# When True (and FRONTEND_DIST), /library/<slug>/read/ serves the React reader shell.
+# Phase 4: React reader is the only immersive reader. Kept for docs/parity with VITE_*.
+REACT_READER_ENABLED = env('REACT_READER_ENABLED', default='true').lower() in (
+    '1',
+    'true',
+    'yes',
+)
+
 # Django → SPA origin (mirror of VITE_DJANGO_ORIGIN on the frontend).
 # Empty / "same" = same-origin relative URLs (Docker with FRONTEND_DIST).
 # Local dual-stack default when FRONTEND_DIST is unset: Vite on :5173.
@@ -184,13 +192,26 @@ REST_FRAMEWORK = {
         'auth': '5/min',
         'password_reset': '5/min',
         'rights_report': '5/hour',
+        'review_write': '10/min',
     },
 }
+
+# E2E-only auth throttle relax. Requires BOTH E2E_RELAX_THROTTLE=1 and DEBUG=True.
+# A stray prod .env copy cannot disable throttling when DEBUG=False (default).
+_E2E_RELAX_THROTTLE = env.bool('E2E_RELAX_THROTTLE', default=False)
+if _E2E_RELAX_THROTTLE and not DEBUG:
+    raise ImproperlyConfigured(
+        'E2E_RELAX_THROTTLE=1 is only allowed when DEBUG=True. '
+        'Remove it from production env — auth throttle stays at 5/min.'
+    )
+if _E2E_RELAX_THROTTLE and DEBUG:
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['auth'] = '1000/min'
+
 
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'luma-default',
+        'LOCATION': 'librouz-default',
     }
 }
 _redis_url = env('REDIS_URL', default='')
@@ -201,6 +222,14 @@ if _redis_url:
             'LOCATION': _redis_url,
         }
     }
+elif not DEBUG:
+    raise ImproperlyConfigured(
+        'Production (DEBUG=False) requires REDIS_URL to be set. '
+        'Multi-worker Gunicorn uses LocMemCache without it, making DRF '
+        'throttle counters (auth, password_reset) per-process only and '
+        'regeneration quotas inconsistent across workers. '
+        'Set REDIS_URL in .env or docker-compose. See DEPLOY.md.'
+    )
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
@@ -230,7 +259,7 @@ EMAIL_BACKEND = env(
     'EMAIL_BACKEND',
     default='django.core.mail.backends.console.EmailBackend',
 )
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@luma.local')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@libro.uz')
 EMAIL_HOST = env('EMAIL_HOST', default='')
 EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
