@@ -5,9 +5,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#06070c">
-    <meta name="description" content="{% block meta_description %}A private and secure way to access your account.{% endblock %}">
-    <title>{% block title %}Account{% endblock %} · Luma</title>
+    <meta name="description" content="{% block meta_description %}Hisobingizga xavfsiz va maxfiy kirish.{% endblock %}">
+    <title>{% block title %}Hisob{% endblock %} · Libro.UZ</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'brand/favicon.svg' %}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'users/css/auth.css' %}">
+    <link rel="stylesheet" href="{% static 'users/css/logo.css' %}">
     {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -16,18 +21,18 @@
 
     <div class="app">
         <header class="site-header">
-            <nav class="nav" aria-label="Primary navigation">
-                <a class="wordmark" href="{% block wordmark_href %}{% url 'library:catalog' %}{% endblock %}" aria-label="Luma home">
-                    <span class="wordmark__mark">LM<span class="wordmark__dot">.</span></span>
+            <nav class="nav" aria-label="Asosiy navigatsiya">
+                <a class="wordmark" href="{% block wordmark_href %}{{ spa_library_url }}{% endblock %}" aria-label="Libro.UZ bosh sahifa">
+                    {% include "partials/logo.html" with size="sm" %}
                 </a>
 
                 {% block nav_center %}
                 <div class="nav__center" aria-hidden="true">
                     <span class="nav__step {% block step_login_class %}{% endblock %}">
-                        <em>01</em> Sign in
+                        <em>01</em> Kirish
                     </span>
                     <span class="nav__step {% block step_register_class %}{% endblock %}">
-                        <em>02</em> Create account
+                        <em>02</em> Hisob yaratish
                     </span>
                 </div>
                 {% endblock %}
@@ -36,7 +41,7 @@
                     {% block nav_status %}
                     <span class="status-chip">
                         <span class="status-chip__dot"></span>
-                        Secure access enabled
+                        Xavfsiz kirish yoqilgan
                     </span>
                     {% endblock %}
                     {% block nav_action %}{% endblock %}
@@ -49,8 +54,8 @@
         </main>
 
         <footer class="site-footer">
-            <p>© 2026 Luma. All rights reserved.</p>
-            <p class="site-footer__security">{% block footer_note %}Secured with encrypted, HttpOnly authentication.{% endblock %}</p>
+            <p>© 2026 Libro.UZ. Barcha huquqlar himoyalangan.</p>
+            <p class="site-footer__security">{% block footer_note %}Shifrlangan HttpOnly autentifikatsiya bilan himoyalangan.{% endblock %}</p>
         </footer>
     </div>
 

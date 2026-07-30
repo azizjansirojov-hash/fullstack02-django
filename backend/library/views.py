@@ -1,14 +1,10 @@
-"""Book reader views and SPA redirect safety nets for catalog/detail URL names."""
+"""Book reader SPA redirects and catalog/detail URL safety nets."""
 
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, redirect
 from django.views import View
 
-from .access import user_can_access_book
-from .auth_access import AuthRequiredMixin
-from .catalog_context import DISPLAY_LANG
-from .models import Book, ReadingProgress
-from .spa_urls import spa_book_detail_url, spa_library_home_url
+from .models import Book
+from .spa_urls import spa_book_detail_url, spa_book_read_url, spa_library_home_url
 
 
 class CatalogToSpaRedirectView(View):
@@ -26,59 +22,17 @@ class BookDetailToSpaRedirectView(View):
         return redirect(spa_book_detail_url(slug))
 
 
-class BookReadView(AuthRequiredMixin, View):
-    """Immersive reader with page-turn animation. Session or JWT cookie auth."""
+class BookReadToSpaRedirectView(View):
+    """Send /library/<slug>/read/ to the React immersive reader (local dual-stack).
 
-    template_name = 'library/book_read.html'
+    Auth and entitlement are enforced by the SPA + reader manifest API.
+    Preserves query string and hash is client-only (not sent to server).
+    """
 
     def get(self, request, slug):
-        book = get_object_or_404(
-            Book.objects.prefetch_related('translations', 'audio_chapters'),
-            slug=slug,
-            is_published=True,
-        )
-
-        if not user_can_access_book(request.user, book):
-            if 'application/json' in request.headers.get('Accept', ''):
-                return JsonResponse(
-                    {'detail': 'Purchase required to access this book.'},
-                    status=403,
-                )
-            return redirect(spa_book_detail_url(slug))
-
-        translation = book.get_translation(DISPLAY_LANG)
-        if not translation or not translation.body.strip():
-            return redirect(spa_book_detail_url(slug))
-
-        audio_chapters = book.get_audio_chapters_payload(include_urls=True)
-        audio_url = audio_chapters[0]['url'] if audio_chapters else ''
-
-        progress = ReadingProgress.objects.filter(
-            user=request.user, book=book
-        ).first()
-        reading_progress = None
-        if progress:
-            reading_progress = {
-                'exists': True,
-                'mode': progress.mode,
-                'page': progress.page,
-                'total_pages': progress.total_pages,
-                'chapter_id': progress.chapter_id,
-                'position': progress.position,
-            }
-
-        return render(
-            request,
-            self.template_name,
-            {
-                'book': book,
-                'translation': translation,
-                'audio_url': audio_url,
-                'audio_chapters': audio_chapters,
-                'pdf_url': book.gated_pdf_url(),
-                'audio_sync': translation.audio_sync or [],
-                'reading_progress': reading_progress,
-                'spa_library_url': spa_library_home_url(),
-                'spa_detail_url': spa_book_detail_url(book.slug),
-            },
-        )
+        get_object_or_404(Book, slug=slug, is_published=True)
+        target = spa_book_read_url(slug)
+        qs = request.META.get('QUERY_STRING', '')
+        if qs:
+            target = f'{target}?{qs}' if '?' not in target else f'{target}&{qs}'
+        return redirect(target)

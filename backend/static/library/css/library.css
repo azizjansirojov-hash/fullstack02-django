@@ -1,4 +1,4 @@
-/* Luma Library — extends shared design tokens from the auth shell */
+/* Libro.UZ library — extends shared design tokens from the auth shell */
 
 :root {
     --lib-display: "Fraunces", "Times New Roman", serif;
@@ -808,9 +808,7 @@ body {
 }
 
 .reading-mode-selector--detail {
-    position: absolute;
-    right: 0;
-    bottom: 0;
+    align-self: center;
 }
 
 .reading-mode-selector__btn {
@@ -973,8 +971,13 @@ body {
 
 @media (max-width: 480px) {
     .reading-mode-selector--detail {
-        position: static;
-        margin-top: 0.7rem;
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .reading-mode-selector--detail .reading-mode-selector__btn {
+        flex: 1;
+        text-align: center;
     }
 }
 
