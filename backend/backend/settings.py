@@ -197,6 +197,8 @@ REST_FRAMEWORK = {
         'password_reset': '5/min',
         'rights_report': '5/hour',
         'review_write': '10/min',
+        # Progress heartbeats (~50s gap) + page turns; blocks rapid-fire abuse.
+        'reading_progress': '30/min',
     },
 }
 

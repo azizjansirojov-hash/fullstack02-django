@@ -1,6 +1,7 @@
 """Tests for daily reading goal / ReadingSession activity stats."""
 
 from datetime import datetime, timedelta
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -402,3 +403,60 @@ class DailyGoalActivityTests(TestCase):
             'badges'
         ]
         self.assertEqual(badges, [])
+
+    def test_progress_write_throttle_returns_429_after_limit(self):
+        """Match review_write test: patch ScopedRateThrottle.get_rate to 2/min."""
+        from django.core.cache import cache
+
+        cache.clear()
+        self._login()
+        url = reverse('library_api:reading-progress', kwargs={'slug': self.book.slug})
+        with patch(
+            'rest_framework.throttling.ScopedRateThrottle.get_rate',
+            return_value='2/min',
+        ):
+            first = self.client.put(
+                url,
+                data={'mode': 'flip', 'page': 1, 'minutes_delta': 1},
+                content_type='application/json',
+            )
+            second = self.client.put(
+                url,
+                data={'mode': 'flip', 'page': 2, 'minutes_delta': 1},
+                content_type='application/json',
+            )
+            third = self.client.put(
+                url,
+                data={'mode': 'flip', 'page': 3, 'minutes_delta': 1},
+                content_type='application/json',
+            )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(third.status_code, 429)
+        self.assertIn('Retry-After', third)
+
+    def test_progress_get_unaffected_after_write_throttle_exhausted(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self._login()
+        url = reverse('library_api:reading-progress', kwargs={'slug': self.book.slug})
+        with patch(
+            'rest_framework.throttling.ScopedRateThrottle.get_rate',
+            return_value='1/min',
+        ):
+            write_ok = self.client.put(
+                url,
+                data={'mode': 'flip', 'page': 1, 'minutes_delta': 1},
+                content_type='application/json',
+            )
+            write_blocked = self.client.put(
+                url,
+                data={'mode': 'flip', 'page': 2, 'minutes_delta': 1},
+                content_type='application/json',
+            )
+            get_ok = self.client.get(url)
+        self.assertEqual(write_ok.status_code, 200)
+        self.assertEqual(write_blocked.status_code, 429)
+        self.assertEqual(get_ok.status_code, 200)
+        self.assertTrue(get_ok.json().get('exists'))

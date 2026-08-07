@@ -29,6 +29,8 @@ settings.REST_FRAMEWORK = {
         'auth': '10000/min',
         'password_reset': '10000/min',
         'rights_report': '10000/hour',
+        'review_write': '10000/min',
+        'reading_progress': '10000/min',
     },
 }
 cache.clear()

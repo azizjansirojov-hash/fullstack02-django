@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from users.authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
@@ -23,6 +24,14 @@ class ReadingProgressAPIView(APIView):
         CSRFEnforcedAuthentication,
         JWTCookieAuthentication,
     ]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'reading_progress'
+
+    def get_throttles(self):
+        # Match ReviewAPIView: throttle writes only; GET stays unthrottled.
+        if self.request.method == 'GET':
+            return []
+        return super().get_throttles()
 
     def get(self, request, slug):
         book = get_object_or_404(Book, slug=slug, is_published=True)
