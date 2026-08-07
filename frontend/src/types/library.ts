@@ -130,6 +130,8 @@ export type ActivityStats = {
   today_minutes_read: number
   daily_goal_minutes: number
   goal_progress_percent: number
+  week_minutes_total: number
+  week_pages_total: number
 }
 
 export type CatalogResponse = {

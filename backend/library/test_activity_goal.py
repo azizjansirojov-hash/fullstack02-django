@@ -1,6 +1,6 @@
 """Tests for daily reading goal / ReadingSession activity stats."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -52,6 +52,8 @@ class DailyGoalActivityTests(TestCase):
         self.assertEqual(stats['today_minutes_read'], 0)
         self.assertEqual(stats['daily_goal_minutes'], 20)
         self.assertEqual(stats['goal_progress_percent'], 0)
+        self.assertEqual(stats['week_minutes_total'], 0)
+        self.assertEqual(stats['week_pages_total'], 0)
 
     def test_catalog_activity_stats_goal_exactly_met(self):
         self._login()
@@ -149,3 +151,45 @@ class DailyGoalActivityTests(TestCase):
     def test_guest_catalog_activity_stats_null(self):
         data = self.client.get(reverse('library_api:catalog')).json()
         self.assertIsNone(data['activity_stats'])
+
+    def test_catalog_week_stats_sum_last_seven_days(self):
+        self._login()
+        today = timezone.localdate()
+        ReadingSession.objects.create(
+            user=self.user,
+            date=today,
+            minutes_read=10,
+            pages_read=4,
+        )
+        ReadingSession.objects.create(
+            user=self.user,
+            date=today - timedelta(days=3),
+            minutes_read=15,
+            pages_read=6,
+        )
+        # Outside the 7-day window — ignored.
+        ReadingSession.objects.create(
+            user=self.user,
+            date=today - timedelta(days=8),
+            minutes_read=100,
+            pages_read=100,
+        )
+        stats = self.client.get(reverse('library_api:catalog')).json()['activity_stats']
+        self.assertEqual(stats['week_minutes_total'], 25)
+        self.assertEqual(stats['week_pages_total'], 10)
+
+    def test_progress_page_advance_increments_pages_read(self):
+        self._login()
+        url = reverse('library_api:reading-progress', kwargs={'slug': self.book.slug})
+        self.client.put(
+            url,
+            data={'mode': 'flip', 'page': 2, 'minutes_delta': 1},
+            content_type='application/json',
+        )
+        self.client.put(
+            url,
+            data={'mode': 'flip', 'page': 5, 'minutes_delta': 1},
+            content_type='application/json',
+        )
+        session = ReadingSession.objects.get(user=self.user, date=timezone.localdate())
+        self.assertEqual(session.pages_read, 3)

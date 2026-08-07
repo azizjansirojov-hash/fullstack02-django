@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from users.authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
 
-from ..activity import record_reading_session_minutes
+from ..activity import record_reading_session
 from ..models import Book, ReadingProgress
 from ..serializers import ProgressUpsertSerializer
 from ._common import serialize_progress_payload
@@ -59,6 +59,7 @@ class ReadingProgressAPIView(APIView):
 
         existing = ReadingProgress.objects.filter(user=request.user, book=book).first()
         previous_heartbeat_at = existing.updated_at if existing else None
+        previous_page = existing.page if existing else None
         next_status = ReadingProgress.Status.READING
         if existing:
             if existing.status == ReadingProgress.Status.PLANNED:
@@ -116,9 +117,19 @@ class ReadingProgressAPIView(APIView):
             defaults=defaults,
         )
         if next_status == ReadingProgress.Status.READING:
-            record_reading_session_minutes(
+            pages_delta = 0
+            new_page = defaults.get('page')
+            if (
+                mode != ReadingProgress.Mode.LISTEN
+                and previous_page is not None
+                and new_page is not None
+                and new_page > previous_page
+            ):
+                pages_delta = new_page - previous_page
+            record_reading_session(
                 request.user,
                 minutes_delta=minutes_delta,
+                pages_delta=pages_delta,
                 previous_heartbeat_at=previous_heartbeat_at,
             )
         return Response(serialize_progress_payload(progress), status=status.HTTP_200_OK)

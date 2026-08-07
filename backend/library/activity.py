@@ -14,6 +14,7 @@ from .models import ReadingSession
 
 # Cap per progress heartbeat so a stale tab cannot dump huge deltas.
 MAX_MINUTES_DELTA_PER_SAVE = 15
+MAX_PAGES_DELTA_PER_SAVE = 50
 # Ignore gaps longer than this when estimating from wall-clock (new bout).
 IDLE_GAP = timedelta(minutes=20)
 
@@ -41,35 +42,68 @@ def goal_progress_percent(minutes_read: int, goal_minutes: int) -> int:
     return min(100, int(round((minutes_read / goal_minutes) * 100)))
 
 
+def week_minutes_total(user, *, end_date=None) -> int:
+    """Sum minutes_read over the last 7 local calendar days (inclusive)."""
+    end = end_date or timezone.localdate()
+    start = end - timedelta(days=6)
+    total = (
+        ReadingSession.objects.filter(user=user, date__gte=start, date__lte=end)
+        .aggregate(s=Sum('minutes_read'))
+        .get('s')
+    )
+    return int(total or 0)
+
+
+def week_pages_total(user, *, end_date=None) -> int:
+    """Sum pages_read over the last 7 local calendar days (inclusive)."""
+    end = end_date or timezone.localdate()
+    start = end - timedelta(days=6)
+    total = (
+        ReadingSession.objects.filter(user=user, date__gte=start, date__lte=end)
+        .aggregate(s=Sum('pages_read'))
+        .get('s')
+    )
+    return int(total or 0)
+
+
 def serialize_activity_stats(user) -> dict:
-    """Catalog payload fragment for daily goal progress."""
+    """Catalog payload fragment for daily goal + weekly mini-stats."""
     goal = get_daily_goal_minutes(user)
     today = today_minutes_read(user)
     return {
         'today_minutes_read': today,
         'daily_goal_minutes': goal,
         'goal_progress_percent': goal_progress_percent(today, goal),
+        'week_minutes_total': week_minutes_total(user),
+        'week_pages_total': week_pages_total(user),
     }
 
 
-def record_reading_session_minutes(user, *, minutes_delta=None, previous_heartbeat_at=None):
+def record_reading_session(
+    user,
+    *,
+    minutes_delta=None,
+    pages_delta=0,
+    previous_heartbeat_at=None,
+):
     """Accumulate today's ReadingSession from a progress upsert heartbeat.
 
     Prefer an explicit ``minutes_delta`` from the client when present.
     Otherwise estimate from wall-clock since the previous heartbeat
     (session ``updated_at`` or progress ``updated_at``), capped per save.
+    ``pages_delta`` counts flip/pdf page advances (non-negative).
     """
     now = timezone.now()
     today = timezone.localdate()
 
     if minutes_delta is not None:
         try:
-            add = int(minutes_delta)
+            add_minutes = int(minutes_delta)
         except (TypeError, ValueError):
-            add = 0
-        add = max(0, min(MAX_MINUTES_DELTA_PER_SAVE, add))
+            add_minutes = 0
+        add_minutes = max(0, min(MAX_MINUTES_DELTA_PER_SAVE, add_minutes))
     else:
-        add = 0
+        add_minutes = 0
         anchor = previous_heartbeat_at
         session_preview = (
             ReadingSession.objects.filter(user=user, date=today)
@@ -81,34 +115,36 @@ def record_reading_session_minutes(user, *, minutes_delta=None, previous_heartbe
         if anchor is not None:
             elapsed = now - anchor
             if timedelta(0) < elapsed <= IDLE_GAP:
-                add = min(
+                add_minutes = min(
                     MAX_MINUTES_DELTA_PER_SAVE,
                     max(0, int(elapsed.total_seconds() // 60)),
                 )
 
+    try:
+        add_pages = int(pages_delta or 0)
+    except (TypeError, ValueError):
+        add_pages = 0
+    add_pages = max(0, min(MAX_PAGES_DELTA_PER_SAVE, add_pages))
+
     session, _created = ReadingSession.objects.get_or_create(
         user=user,
         date=today,
-        defaults={'minutes_read': 0},
+        defaults={'minutes_read': 0, 'pages_read': 0},
     )
-    if add > 0:
-        ReadingSession.objects.filter(pk=session.pk).update(
-            minutes_read=F('minutes_read') + add,
-            updated_at=now,
-        )
-    else:
-        ReadingSession.objects.filter(pk=session.pk).update(updated_at=now)
+    updates = {'updated_at': now}
+    if add_minutes > 0:
+        updates['minutes_read'] = F('minutes_read') + add_minutes
+    if add_pages > 0:
+        updates['pages_read'] = F('pages_read') + add_pages
+    ReadingSession.objects.filter(pk=session.pk).update(**updates)
     session.refresh_from_db()
     return session
 
 
-def week_minutes_total(user, *, end_date=None) -> int:
-    """Sum minutes_read over the last 7 local calendar days (inclusive)."""
-    end = end_date or timezone.localdate()
-    start = end - timedelta(days=6)
-    total = (
-        ReadingSession.objects.filter(user=user, date__gte=start, date__lte=end)
-        .aggregate(s=Sum('minutes_read'))
-        .get('s')
+# Back-compat alias used by Feature A call sites / tests.
+def record_reading_session_minutes(user, *, minutes_delta=None, previous_heartbeat_at=None):
+    return record_reading_session(
+        user,
+        minutes_delta=minutes_delta,
+        previous_heartbeat_at=previous_heartbeat_at,
     )
-    return int(total or 0)

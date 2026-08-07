@@ -121,7 +121,7 @@ class ReadingProgressAdmin(admin.ModelAdmin):
 
 @admin.register(ReadingSession)
 class ReadingSessionAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'minutes_read', 'updated_at')
+    list_display = ('user', 'date', 'minutes_read', 'pages_read', 'updated_at')
     list_filter = ('date',)
     search_fields = ('user__username', 'user__email')
     readonly_fields = ('updated_at',)

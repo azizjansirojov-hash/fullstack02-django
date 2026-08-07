@@ -518,6 +518,10 @@ class ReadingSession(models.Model):
     )
     date = models.DateField(db_index=True)
     minutes_read = models.PositiveIntegerField(default=0)
+    pages_read = models.PositiveIntegerField(
+        default=0,
+        help_text='Pages advanced today (flip/pdf page index increases).',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

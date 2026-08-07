@@ -130,6 +130,8 @@ export default function WeeklyActivityWidget({
         today_minutes_read: todayMinutes,
         daily_goal_minutes: saved,
         goal_progress_percent: Math.min(100, Math.round((todayMinutes / saved) * 100)),
+        week_minutes_total: activityStats?.week_minutes_total ?? 0,
+        week_pages_total: activityStats?.week_pages_total ?? 0,
       })
     } catch {
       setGoalError('Saqlab bo‘lmadi. Qayta urinib ko‘ring.')
@@ -236,6 +238,18 @@ export default function WeeklyActivityWidget({
               <strong>{milestone != null ? `${milestone} kun` : '—'}</strong>
             </div>
           </div>
+          {activityStats != null ? (
+            <div className="activity-stats activity-stats--week">
+              <div className="activity-stat">
+                <span>Haftalik daqiqa</span>
+                <strong>{activityStats.week_minutes_total ?? 0} daq</strong>
+              </div>
+              <div className="activity-stat">
+                <span>Haftalik sahifa</span>
+                <strong>{activityStats.week_pages_total ?? 0} sah</strong>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
