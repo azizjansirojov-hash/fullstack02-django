@@ -224,6 +224,23 @@ class LibraryAPITests(TestCase):
         self.assertTrue(data['has_access'])
         self.assertTrue(data['sentence_wrap'])
 
+    def test_reader_manifest_body_is_sanitized_against_script(self):
+        """Malicious HTML saved into body must not pass through unescaped."""
+        uz = self.book.translations.get(language=BookTranslation.Language.UZ)
+        uz.body = 'Intro.\n\n<script>alert(1)</script><p>Safe</p>'
+        uz.save()
+        uz.refresh_from_db()
+        self.assertNotIn('<script', uz.body.lower())
+
+        self._login()
+        url = reverse('library_api:reader-manifest', kwargs={'slug': self.book.slug})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()['body']
+        self.assertNotIn('<script', body.lower())
+        self.assertIn('Intro.', body)
+        self.assertIn('Safe', body)
+
     def test_reader_manifest_denied_without_purchase(self):
         other = User.objects.create_user(
             username='nopurchase',

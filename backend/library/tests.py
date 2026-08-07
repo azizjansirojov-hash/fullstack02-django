@@ -176,6 +176,40 @@ class BookModelTests(TestCase):
         with self.assertRaises(ValidationError):
             translation.full_clean()
 
+    def test_body_sanitizes_script_iframe_and_event_handlers_on_save(self):
+        book = Book.objects.create(author_name='Safe', slug='safe-body-book')
+        translation = BookTranslation.objects.create(
+            book=book,
+            title='XSS Test',
+            body=(
+                'Safe start.\n\n'
+                '<script>alert(1)</script>'
+                '<iframe src="https://evil.example"></iframe>'
+                '<img src=x onerror="alert(1)">'
+                '<p onclick="alert(1)">ok</p>'
+            ),
+        )
+        translation.refresh_from_db()
+        body = translation.body
+        self.assertNotIn('<script', body.lower())
+        self.assertNotIn('<iframe', body.lower())
+        self.assertNotIn('onerror=', body.lower())
+        self.assertNotIn('onclick=', body.lower())
+        self.assertIn('Safe start.', body)
+        # Allowlisted tag kept; attributes stripped.
+        self.assertIn('<p>', body)
+        self.assertIn('ok', body)
+
+    def test_body_sanitizer_preserves_plain_paragraphs(self):
+        book = Book.objects.create(author_name='Plain', slug='plain-body-book')
+        translation = BookTranslation.objects.create(
+            book=book,
+            title='Plain',
+            body='Birinchi bob.\n\nIkkinchi bob.',
+        )
+        translation.refresh_from_db()
+        self.assertEqual(translation.body, 'Birinchi bob.\n\nIkkinchi bob.')
+
 
 class AudioChapterPayloadTests(TestCase):
     def setUp(self):

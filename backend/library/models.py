@@ -120,7 +120,7 @@ class Book(models.Model):
         ordering = ['-created_at', 'author_name']
 
     def __str__(self):
-        uz = self.translations.filter(language=BookTranslation.Language.UZ).first()
+        uz = self.get_translation(BookTranslation.Language.UZ)
         if uz:
             return f'{uz.title} — {self.author_name}'
         return f'{self.author_name} ({self.slug})'
@@ -262,12 +262,14 @@ class Book(models.Model):
         return []
 
     def has_audio(self):
-        """True when listen mode has at least one playable track."""
-        if self.audio_chapters.exclude(audio_file='').filter(audio_file__isnull=False).exists():
-            return True
-        # FileField empty string vs null
-        if self.audio_chapters.exclude(audio_file='').exists():
-            return True
+        """True when listen mode has at least one playable track.
+
+        Uses the prefetched ``audio_chapters`` cache when present (``.all()``),
+        avoiding per-book EXISTS queries on catalog serialization.
+        """
+        for chapter in self.audio_chapters.all():
+            if chapter.audio_file:
+                return True
         return bool(self.audio_file)
 
     def has_pdf(self):
@@ -395,6 +397,9 @@ class BookTranslation(models.Model):
 
     def clean(self):
         super().clean()
+        from .body_sanitize import sanitize_book_body
+
+        self.body = sanitize_book_body(self.body)
         data = self.audio_sync
         if not data:
             return
@@ -422,6 +427,12 @@ class BookTranslation(models.Model):
                 raise ValidationError(
                     {'audio_sync': f'Row {index} "text" must be a string.'}
                 )
+
+    def save(self, *args, **kwargs):
+        from .body_sanitize import sanitize_book_body
+
+        self.body = sanitize_book_body(self.body)
+        super().save(*args, **kwargs)
 
 
 class ReadingProgress(models.Model):
@@ -610,6 +621,12 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['user', 'is_read', '-created_at'],
+                name='lib_notif_user_read_created',
+            ),
+        ]
 
 
 class GenerationJob(models.Model):

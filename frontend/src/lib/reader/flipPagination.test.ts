@@ -81,6 +81,22 @@ describe('flipPagination parity with Django reader.js', () => {
     expect(pages[0]).toContain(escapeHtml('<script>alert(1)</script>'))
   })
 
+  it('buildPageElements does not create executable script nodes from malicious body', () => {
+    const pages = paginateContent(
+      ['<script>alert(1)</script><img src=x onerror=alert(1)>'],
+      280,
+      380,
+    )
+    const elements = buildPageElements(pages, { sentenceWrap: false })
+    expect(elements).toHaveLength(1)
+    document.body.appendChild(elements[0]!)
+    // Escaped as text — no live script/img nodes or event-handler attributes.
+    expect(document.querySelectorAll('script')).toHaveLength(0)
+    expect(document.querySelectorAll('img')).toHaveLength(0)
+    expect(elements[0]!.querySelectorAll('[onerror]')).toHaveLength(0)
+    expect(elements[0]!.innerHTML).not.toMatch(/<script[\s>]/i)
+  })
+
   it('buildPageElements wraps sentences when sentenceWrap is true', () => {
     const elements = buildPageElements(['<p>First. Second.</p>'], { sentenceWrap: true })
     expect(elements).toHaveLength(1)
