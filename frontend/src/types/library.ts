@@ -126,12 +126,20 @@ export type CatalogUser = {
 }
 
 /** CatalogAPIView.get */
+export type ActivityBadge = {
+  id: string
+  kind: 'streak' | 'finished_month' | string
+  value: number
+  label: string
+}
+
 export type ActivityStats = {
   today_minutes_read: number
   daily_goal_minutes: number
   goal_progress_percent: number
   week_minutes_total: number
   week_pages_total: number
+  badges: ActivityBadge[]
 }
 
 export type CatalogResponse = {

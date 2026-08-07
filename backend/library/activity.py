@@ -10,13 +10,16 @@ from users.models import (
     UserPreferences,
 )
 
-from .models import ReadingSession
+from .models import ReadingProgress, ReadingSession
 
 # Cap per progress heartbeat so a stale tab cannot dump huge deltas.
 MAX_MINUTES_DELTA_PER_SAVE = 15
 MAX_PAGES_DELTA_PER_SAVE = 50
 # Ignore gaps longer than this when estimating from wall-clock (new bout).
 IDLE_GAP = timedelta(minutes=20)
+
+STREAK_BADGE_MILESTONES = (3, 7, 14, 30)
+FINISHED_MONTH_BADGE_MILESTONES = (1, 3, 5)
 
 
 def get_daily_goal_minutes(user) -> int:
@@ -66,8 +69,90 @@ def week_pages_total(user, *, end_date=None) -> int:
     return int(total or 0)
 
 
+def _active_day_keys(user) -> set:
+    """Local calendar dates with reading activity (sessions + progress updates)."""
+    keys = set(
+        ReadingSession.objects.filter(user=user, minutes_read__gt=0).values_list(
+            'date', flat=True
+        )
+    )
+    for ts in (
+        ReadingProgress.objects.filter(user=user)
+        .exclude(status=ReadingProgress.Status.PLANNED)
+        .values_list('updated_at', flat=True)
+    ):
+        if ts is not None:
+            keys.add(timezone.localdate(ts))
+    return keys
+
+
+def compute_streak_days(user, *, today=None) -> int:
+    """Consecutive active days ending today, or yesterday if today is idle."""
+    today = today or timezone.localdate()
+    active = _active_day_keys(user)
+    cursor = today
+    if cursor not in active:
+        cursor = today - timedelta(days=1)
+        if cursor not in active:
+            return 0
+    streak = 0
+    while cursor in active:
+        streak += 1
+        cursor = cursor - timedelta(days=1)
+    return streak
+
+
+def books_finished_this_month(user, *, today=None) -> int:
+    today = today or timezone.localdate()
+    return (
+        ReadingProgress.objects.filter(
+            user=user,
+            status=ReadingProgress.Status.FINISHED,
+            updated_at__year=today.year,
+            updated_at__month=today.month,
+        ).count()
+    )
+
+
+def _highest_milestone(value: int, milestones: tuple[int, ...]) -> int | None:
+    earned = [m for m in milestones if value >= m]
+    return max(earned) if earned else None
+
+
+def compute_active_badges(user, *, today=None) -> list[dict]:
+    """Return currently-active badges only (highest milestone per kind, max 2)."""
+    today = today or timezone.localdate()
+    badges: list[dict] = []
+
+    streak = compute_streak_days(user, today=today)
+    streak_m = _highest_milestone(streak, STREAK_BADGE_MILESTONES)
+    if streak_m is not None:
+        badges.append(
+            {
+                'id': f'streak_{streak_m}',
+                'kind': 'streak',
+                'value': streak_m,
+                'label': f'{streak_m} kunlik seriya',
+            }
+        )
+
+    finished = books_finished_this_month(user, today=today)
+    finished_m = _highest_milestone(finished, FINISHED_MONTH_BADGE_MILESTONES)
+    if finished_m is not None:
+        badges.append(
+            {
+                'id': f'finished_{finished_m}',
+                'kind': 'finished_month',
+                'value': finished_m,
+                'label': f'{finished_m} kitob shu oy',
+            }
+        )
+
+    return badges
+
+
 def serialize_activity_stats(user) -> dict:
-    """Catalog payload fragment for daily goal + weekly mini-stats."""
+    """Catalog payload fragment for daily goal, week stats, and badges."""
     goal = get_daily_goal_minutes(user)
     today = today_minutes_read(user)
     return {
@@ -76,6 +161,7 @@ def serialize_activity_stats(user) -> dict:
         'goal_progress_percent': goal_progress_percent(today, goal),
         'week_minutes_total': week_minutes_total(user),
         'week_pages_total': week_pages_total(user),
+        'badges': compute_active_badges(user),
     }
 
 

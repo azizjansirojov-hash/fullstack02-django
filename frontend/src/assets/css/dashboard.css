@@ -1024,6 +1024,25 @@
   margin-top: 0.5rem;
 }
 
+.activity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.activity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(228, 255, 84, 0.1);
+  color: var(--secondary);
+  font-size: 0.68rem;
+  font-weight: 550;
+}
+
 .activity-stat {
   padding: 0.55rem 0.65rem;
   border-radius: 12px;

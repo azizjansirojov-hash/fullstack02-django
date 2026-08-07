@@ -16,6 +16,7 @@ describe('WeeklyActivityWidget', () => {
           goal_progress_percent: 0,
           week_minutes_total: 0,
           week_pages_total: 0,
+          badges: [],
         }}
       />,
     )
@@ -25,6 +26,7 @@ describe('WeeklyActivityWidget', () => {
     expect(screen.getByText('Haftalik daqiqa')).toBeInTheDocument()
     expect(screen.getByText('0 daq')).toBeInTheDocument()
     expect(screen.getByText('Haftalik sahifa')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Yutuqlar')).not.toBeInTheDocument()
   })
 
   it('shows goal exactly met', () => {
@@ -36,6 +38,9 @@ describe('WeeklyActivityWidget', () => {
           goal_progress_percent: 100,
           week_minutes_total: 45,
           week_pages_total: 12,
+          badges: [
+            { id: 'streak_7', kind: 'streak', value: 7, label: '7 kunlik seriya' },
+          ],
         }}
       />,
     )
@@ -43,5 +48,6 @@ describe('WeeklyActivityWidget', () => {
     expect(screen.getByLabelText(/Bugungi maqsad: 20 \/ 20 daqiqa/)).toBeInTheDocument()
     expect(screen.getByText('45 daq')).toBeInTheDocument()
     expect(screen.getByText('12 sah')).toBeInTheDocument()
+    expect(screen.getByText('7 kunlik seriya')).toBeInTheDocument()
   })
 })

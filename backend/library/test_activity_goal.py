@@ -54,6 +54,7 @@ class DailyGoalActivityTests(TestCase):
         self.assertEqual(stats['goal_progress_percent'], 0)
         self.assertEqual(stats['week_minutes_total'], 0)
         self.assertEqual(stats['week_pages_total'], 0)
+        self.assertEqual(stats['badges'], [])
 
     def test_catalog_activity_stats_goal_exactly_met(self):
         self._login()
@@ -193,3 +194,56 @@ class DailyGoalActivityTests(TestCase):
         )
         session = ReadingSession.objects.get(user=self.user, date=timezone.localdate())
         self.assertEqual(session.pages_read, 3)
+
+    def test_badges_highest_streak_only_and_finished_month(self):
+        from library.models import ReadingProgress
+
+        self._login()
+        today = timezone.localdate()
+        for i in range(7):
+            ReadingSession.objects.create(
+                user=self.user,
+                date=today - timedelta(days=i),
+                minutes_read=5,
+            )
+        # A second finished book this month.
+        other = Book.objects.create(
+            author_name='Other',
+            slug='badge-finished-2',
+            is_published=True,
+            rights_status=Book.RightsStatus.PUBLIC_DOMAIN,
+            pdf_generation_status='ready',
+            audio_generation_status='ready',
+        )
+        BookTranslation.objects.create(
+            book=other,
+            language=BookTranslation.Language.UZ,
+            title='Boshqa',
+            body='Matn.',
+        )
+        ReadingProgress.objects.create(
+            user=self.user,
+            book=self.book,
+            status=ReadingProgress.Status.FINISHED,
+        )
+        ReadingProgress.objects.create(
+            user=self.user,
+            book=other,
+            status=ReadingProgress.Status.FINISHED,
+        )
+        badges = self.client.get(reverse('library_api:catalog')).json()['activity_stats'][
+            'badges'
+        ]
+        ids = [b['id'] for b in badges]
+        self.assertIn('streak_7', ids)
+        self.assertNotIn('streak_3', ids)
+        self.assertIn('finished_1', ids)
+        self.assertNotIn('finished_3', ids)
+        self.assertLessEqual(len(badges), 2)
+
+    def test_badges_hidden_when_none_earned(self):
+        self._login()
+        badges = self.client.get(reverse('library_api:catalog')).json()['activity_stats'][
+            'badges'
+        ]
+        self.assertEqual(badges, [])
