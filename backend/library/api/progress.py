@@ -2,6 +2,7 @@
 
 from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -176,14 +177,24 @@ class ReadingStatusAPIView(APIView):
             return Response(serialize_progress_payload(progress))
 
         if progress:
+            update_fields = ['status', 'updated_at']
+            if (
+                new_status == ReadingProgress.Status.FINISHED
+                and progress.finished_at is None
+            ):
+                progress.finished_at = timezone.now()
+                update_fields.append('finished_at')
             progress.status = new_status
-            progress.save(update_fields=['status', 'updated_at'])
+            progress.save(update_fields=update_fields)
         else:
-            progress = ReadingProgress.objects.create(
-                user=request.user,
-                book=book,
-                status=new_status,
-            )
+            create_kwargs = {
+                'user': request.user,
+                'book': book,
+                'status': new_status,
+            }
+            if new_status == ReadingProgress.Status.FINISHED:
+                create_kwargs['finished_at'] = timezone.now()
+            progress = ReadingProgress.objects.create(**create_kwargs)
         return Response(serialize_progress_payload(progress))
 
     def delete(self, request, slug):

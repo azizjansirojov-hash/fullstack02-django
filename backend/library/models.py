@@ -487,6 +487,11 @@ class ReadingProgress(models.Model):
         default=0,
         help_text='Audio seconds or fine-grained offset within the page.',
     )
+    finished_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='Set once on first transition to finished; kept on reopen.',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

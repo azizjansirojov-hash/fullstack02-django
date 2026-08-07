@@ -282,11 +282,13 @@ class DailyGoalActivityTests(TestCase):
             user=self.user,
             book=self.book,
             status=ReadingProgress.Status.FINISHED,
+            finished_at=timezone.now(),
         )
         ReadingProgress.objects.create(
             user=self.user,
             book=other,
             status=ReadingProgress.Status.FINISHED,
+            finished_at=timezone.now(),
         )
         badges = self.client.get(reverse('library_api:catalog')).json()['activity_stats'][
             'badges'
@@ -297,6 +299,74 @@ class DailyGoalActivityTests(TestCase):
         self.assertIn('finished_1', ids)
         self.assertNotIn('finished_3', ids)
         self.assertLessEqual(len(badges), 2)
+
+    def test_finished_at_set_once_and_survives_reopen(self):
+        from library.models import ReadingProgress
+
+        self._login()
+        status_url = reverse(
+            'library_api:reading-status',
+            kwargs={'slug': self.book.slug},
+        )
+        progress_url = reverse(
+            'library_api:reading-progress',
+            kwargs={'slug': self.book.slug},
+        )
+        finish = self.client.put(
+            status_url,
+            data={'status': 'finished'},
+            content_type='application/json',
+        )
+        self.assertEqual(finish.status_code, 200)
+        progress = ReadingProgress.objects.get(user=self.user, book=self.book)
+        self.assertIsNotNone(progress.finished_at)
+        first_finished_at = progress.finished_at
+
+        reopen = self.client.put(
+            status_url,
+            data={'status': 'reading'},
+            content_type='application/json',
+        )
+        self.assertEqual(reopen.status_code, 200)
+        progress.refresh_from_db()
+        self.assertEqual(progress.status, ReadingProgress.Status.READING)
+        self.assertEqual(progress.finished_at, first_finished_at)
+
+        ReadingSession.objects.filter(user=self.user).delete()
+        self.client.put(
+            progress_url,
+            data={'mode': 'flip', 'page': 3, 'minutes_delta': 1, 'reopen': True},
+            content_type='application/json',
+        )
+        progress.refresh_from_db()
+        self.assertEqual(progress.finished_at, first_finished_at)
+
+        # Re-finish must keep original finished_at.
+        self.client.put(
+            status_url,
+            data={'status': 'finished'},
+            content_type='application/json',
+        )
+        progress.refresh_from_db()
+        self.assertEqual(progress.finished_at, first_finished_at)
+
+    def test_finished_month_badge_uses_finished_at_not_updated_at(self):
+        from library.models import ReadingProgress
+
+        self._login()
+        last_month = timezone.now() - timedelta(days=40)
+        progress = ReadingProgress.objects.create(
+            user=self.user,
+            book=self.book,
+            status=ReadingProgress.Status.FINISHED,
+            finished_at=last_month,
+        )
+        # Touch updated_at into the current month without changing finished_at.
+        ReadingProgress.objects.filter(pk=progress.pk).update(updated_at=timezone.now())
+        badges = self.client.get(reverse('library_api:catalog')).json()['activity_stats'][
+            'badges'
+        ]
+        self.assertEqual(badges, [])
 
     def test_badges_hidden_when_none_earned(self):
         self._login()

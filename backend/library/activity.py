@@ -112,8 +112,8 @@ def books_finished_this_month(user, *, today=None) -> int:
         ReadingProgress.objects.filter(
             user=user,
             status=ReadingProgress.Status.FINISHED,
-            updated_at__year=today.year,
-            updated_at__month=today.month,
+            finished_at__year=today.year,
+            finished_at__month=today.month,
         ).count()
     )
 
