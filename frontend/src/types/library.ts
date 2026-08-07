@@ -139,6 +139,10 @@ export type ActivityStats = {
   goal_progress_percent: number
   week_minutes_total: number
   week_pages_total: number
+  /** Server SSOT streak; prefer over client computeStreak when present. */
+  current_streak_days?: number
+  /** Absolute next Keyingi marra target (e.g. 7), or null past the last. */
+  next_milestone_days?: number | null
   badges: ActivityBadge[]
 }
 

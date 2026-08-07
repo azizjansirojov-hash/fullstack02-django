@@ -23,6 +23,8 @@ MAX_DAILY_READING_MINUTES = 720
 MIN_SESSION_INCREMENT_GAP = timedelta(seconds=50)
 
 STREAK_BADGE_MILESTONES = (3, 7, 14, 30)
+# Display milestones for "Keyingi marra" (matches WeeklyActivityWidget).
+STREAK_DISPLAY_MILESTONES = (3, 7, 14, 21, 30, 60, 100)
 FINISHED_MONTH_BADGE_MILESTONES = (1, 3, 5)
 
 
@@ -118,17 +120,26 @@ def books_finished_this_month(user, *, today=None) -> int:
     )
 
 
+def next_streak_milestone_days(streak: int) -> int | None:
+    """Next absolute streak target for Keyingi marra, or None if past the last."""
+    for milestone in STREAK_DISPLAY_MILESTONES:
+        if milestone > streak:
+            return milestone
+    return None
+
+
 def _highest_milestone(value: int, milestones: tuple[int, ...]) -> int | None:
     earned = [m for m in milestones if value >= m]
     return max(earned) if earned else None
 
 
-def compute_active_badges(user, *, today=None) -> list[dict]:
+def compute_active_badges(user, *, today=None, streak: int | None = None) -> list[dict]:
     """Return currently-active badges only (highest milestone per kind, max 2)."""
     today = today or timezone.localdate()
     badges: list[dict] = []
 
-    streak = compute_streak_days(user, today=today)
+    if streak is None:
+        streak = compute_streak_days(user, today=today)
     streak_m = _highest_milestone(streak, STREAK_BADGE_MILESTONES)
     if streak_m is not None:
         badges.append(
@@ -156,16 +167,19 @@ def compute_active_badges(user, *, today=None) -> list[dict]:
 
 
 def serialize_activity_stats(user) -> dict:
-    """Catalog payload fragment for daily goal, week stats, and badges."""
+    """Catalog payload fragment for daily goal, week stats, streak, and badges."""
     goal = get_daily_goal_minutes(user)
     today = today_minutes_read(user)
+    streak = compute_streak_days(user)
     return {
         'today_minutes_read': today,
         'daily_goal_minutes': goal,
         'goal_progress_percent': goal_progress_percent(today, goal),
         'week_minutes_total': week_minutes_total(user),
         'week_pages_total': week_pages_total(user),
-        'badges': compute_active_badges(user),
+        'current_streak_days': streak,
+        'next_milestone_days': next_streak_milestone_days(streak),
+        'badges': compute_active_badges(user, streak=streak),
     }
 
 

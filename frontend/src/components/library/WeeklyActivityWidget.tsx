@@ -85,8 +85,17 @@ export default function WeeklyActivityWidget({
   })
 
   const activeThisWeek = days.filter((d) => d.active).length
-  const streak = computeStreak(activeKeys, today)
-  const milestone = nextMilestone(streak)
+  // Server is SSOT for authenticated users (activity_stats). Client computeStreak
+  // is only a guest/error fallback when activity_stats is null.
+  const clientStreak = computeStreak(activeKeys, today)
+  const streak =
+    activityStats != null && typeof activityStats.current_streak_days === 'number'
+      ? activityStats.current_streak_days
+      : clientStreak
+  const milestone =
+    activityStats != null && 'next_milestone_days' in activityStats
+      ? (activityStats.next_milestone_days ?? null)
+      : nextMilestone(clientStreak)
   const ringProgress = activeThisWeek / 7
 
   const todayMinutes = activityStats?.today_minutes_read ?? 0
@@ -132,6 +141,11 @@ export default function WeeklyActivityWidget({
         goal_progress_percent: Math.min(100, Math.round((todayMinutes / saved) * 100)),
         week_minutes_total: activityStats?.week_minutes_total ?? 0,
         week_pages_total: activityStats?.week_pages_total ?? 0,
+        current_streak_days: activityStats?.current_streak_days ?? streak,
+        next_milestone_days:
+          activityStats?.next_milestone_days !== undefined
+            ? activityStats.next_milestone_days
+            : milestone,
         badges: activityStats?.badges ?? [],
       })
     } catch {

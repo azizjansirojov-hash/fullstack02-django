@@ -54,6 +54,8 @@ class DailyGoalActivityTests(TestCase):
         self.assertEqual(stats['goal_progress_percent'], 0)
         self.assertEqual(stats['week_minutes_total'], 0)
         self.assertEqual(stats['week_pages_total'], 0)
+        self.assertEqual(stats['current_streak_days'], 0)
+        self.assertEqual(stats['next_milestone_days'], 3)
         self.assertEqual(stats['badges'], [])
 
     def test_catalog_activity_stats_goal_exactly_met(self):
@@ -299,6 +301,32 @@ class DailyGoalActivityTests(TestCase):
         self.assertIn('finished_1', ids)
         self.assertNotIn('finished_3', ids)
         self.assertLessEqual(len(badges), 2)
+
+        stats = self.client.get(reverse('library_api:catalog')).json()['activity_stats']
+        self.assertEqual(stats['current_streak_days'], 7)
+        self.assertEqual(stats['next_milestone_days'], 14)
+        streak_badge = next(b for b in stats['badges'] if b['kind'] == 'streak')
+        # Badge value is highest earned milestone; streak days must agree with selection.
+        self.assertEqual(streak_badge['value'], 7)
+        self.assertGreaterEqual(stats['current_streak_days'], streak_badge['value'])
+
+    def test_activity_stats_streak_matches_badge_selection(self):
+        """current_streak_days and streak badge must share one compute_streak_days value."""
+        self._login()
+        today = timezone.localdate()
+        for i in range(3):
+            ReadingSession.objects.create(
+                user=self.user,
+                date=today - timedelta(days=i),
+                minutes_read=5,
+            )
+        stats = self.client.get(reverse('library_api:catalog')).json()['activity_stats']
+        self.assertEqual(stats['current_streak_days'], 3)
+        self.assertEqual(stats['next_milestone_days'], 7)
+        streak_badges = [b for b in stats['badges'] if b['kind'] == 'streak']
+        self.assertEqual(len(streak_badges), 1)
+        self.assertEqual(streak_badges[0]['id'], 'streak_3')
+        self.assertEqual(streak_badges[0]['value'], 3)
 
     def test_finished_at_set_once_and_survives_reopen(self):
         from library.models import ReadingProgress
