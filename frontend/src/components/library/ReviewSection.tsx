@@ -21,6 +21,8 @@ export default function ReviewSection({ slug }: { slug: string }) {
     count,
     averageRating,
     loading: loadingReviews,
+    loadingMore,
+    hasMore,
     error: reviewError,
     myReview,
     formStatus,
@@ -30,6 +32,7 @@ export default function ReviewSection({ slug }: { slug: string }) {
     submitReview,
     removeReview,
     clearFormFeedback,
+    loadMore,
   } = useBookReviews(slug)
 
   const [formRating, setFormRating] = useState(0)
@@ -131,21 +134,33 @@ export default function ReviewSection({ slug }: { slug: string }) {
             Hali sharh yo&apos;q. Birinchi bo&apos;lib sharh qoldiring!
           </p>
         ) : (
-          <ul className="reviews-list" aria-label="Barcha sharhlar">
-            {reviews.map((r) => (
-              <li
-                key={r.id}
-                className={`review-card${r.username === myReview?.username ? ' review-card--own' : ''}`}
+          <>
+            <ul className="reviews-list" aria-label="Barcha sharhlar">
+              {reviews.map((r) => (
+                <li
+                  key={r.id}
+                  className={`review-card${r.username === myReview?.username ? ' review-card--own' : ''}`}
+                >
+                  <div className="review-card__header">
+                    <StarsDisplay rating={r.rating} />
+                    <span className="review-card__username">{r.username}</span>
+                    <span className="review-card__date">{formatDate(r.created_at)}</span>
+                  </div>
+                  {r.text ? <p className="review-card__text">{r.text}</p> : null}
+                </li>
+              ))}
+            </ul>
+            {hasMore ? (
+              <button
+                type="button"
+                className="reviews-section__load-more"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
               >
-                <div className="review-card__header">
-                  <StarsDisplay rating={r.rating} />
-                  <span className="review-card__username">{r.username}</span>
-                  <span className="review-card__date">{formatDate(r.created_at)}</span>
-                </div>
-                {r.text ? <p className="review-card__text">{r.text}</p> : null}
-              </li>
-            ))}
-          </ul>
+                {loadingMore ? 'Yuklanmoqda…' : 'Yana yuklash'}
+              </button>
+            ) : null}
+          </>
         )}
       </div>
     </section>

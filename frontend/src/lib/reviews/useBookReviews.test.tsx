@@ -1,5 +1,5 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useBookReviews } from '../../lib/reviews/useBookReviews'
 import * as libraryApi from '../../api/library'
@@ -65,6 +65,22 @@ describe('useBookReviews', () => {
             updated_at: '2026-01-01T00:00:00Z',
           },
         ],
+        my_review: {
+          id: 1,
+          username: 'u',
+          rating: 3,
+          text: 'eski',
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+        pagination: {
+          page: 1,
+          num_pages: 1,
+          has_previous: false,
+          has_next: false,
+          previous_page: null,
+          next_page: null,
+        },
       },
     })
     libraryApi.updateReview.mockResolvedValue({

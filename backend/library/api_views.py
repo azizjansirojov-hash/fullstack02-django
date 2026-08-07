@@ -1,5 +1,6 @@
 """JSON API views for the library (SPA). Template views stay unchanged."""
 
+from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
@@ -11,10 +12,12 @@ from rest_framework.views import APIView
 
 from users.authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
 
-from .access import user_can_access_book
+from .access import paid_book_ids_for_user, user_can_access_book, user_has_access_to_book
 from .catalog_context import DISPLAY_LANG, build_catalog_context
 from .models import Book, ReadingProgress, Review
 from .serializers import ProgressUpsertSerializer, ReviewSerializer, ReviewWriteSerializer
+
+REVIEW_PAGE_SIZE = 20
 
 
 def serialize_activity_timestamps(user):
@@ -45,16 +48,28 @@ def category_label_uz(code):
     return CATEGORY_LABELS_UZ.get(code, 'Boshqa')
 
 
-def serialize_book_card(book, translation, *, authenticated=False, user=None):
+def serialize_book_card(
+    book,
+    translation,
+    *,
+    authenticated=False,
+    user=None,
+    paid_book_ids: set[int] | None = None,
+):
     """Shelf/card payload shared by catalog and detail APIs.
 
     PDF/audio URLs are only included when the user may access full content
     (public_domain or paid purchase). Authenticated users without access still
     see has_pdf/has_audio flags so the UI can show a purchase-required state.
+
+    Pass ``paid_book_ids`` from a single batched Purchase query when serializing
+    many cards to avoid per-book EXISTS lookups.
     """
     has_access = False
     if authenticated and user is not None:
-        has_access = user_can_access_book(user, book)
+        has_access = user_has_access_to_book(
+            user, book, paid_book_ids=paid_book_ids
+        )
     include_urls = has_access
     audio_chapters = book.get_audio_chapters_payload(include_urls=include_urls)
     audio_url = audio_chapters[0]['url'] if audio_chapters and include_urls else ''
@@ -104,7 +119,9 @@ def serialize_progress_payload(progress):
     }
 
 
-def serialize_progress_card(row, *, authenticated=True, user=None):
+def serialize_progress_card(
+    row, *, authenticated=True, user=None, paid_book_ids: set[int] | None = None
+):
     """Book card with nested progress for My Library / continue_reading."""
     translation = row.book.get_translation(DISPLAY_LANG)
     # Propagate review aggregates annotated on the progress queryset onto the book
@@ -117,6 +134,7 @@ def serialize_progress_card(row, *, authenticated=True, user=None):
         translation,
         authenticated=authenticated,
         user=user or row.user,
+        paid_book_ids=paid_book_ids,
     )
     card['reading_status'] = row.status
     card['progress'] = {
@@ -178,20 +196,31 @@ class CatalogAPIView(APIView):
         continue_reading = []
         activity_timestamps = []
         status_by_book_id = {}
+        progress_rows = []
+        paid_book_ids: set[int] | None = None
         if authenticated:
             status_by_book_id = dict(
                 ReadingProgress.objects.filter(user=request.user).values_list(
                     'book_id', 'status'
                 )
             )
-            progress_rows = progress_queryset_for_user(
-                request.user, ReadingProgress.Status.READING
-            )[:12]
+            progress_rows = list(
+                progress_queryset_for_user(
+                    request.user, ReadingProgress.Status.READING
+                )[:12]
+            )
+            activity_timestamps = serialize_activity_timestamps(request.user)
+            book_ids = [item['book'].pk for item in ctx['shelf']]
+            for group in ctx['category_lists']:
+                book_ids.extend(item['book'].pk for item in group['items'][:5])
+            book_ids.extend(row.book_id for row in progress_rows)
+            paid_book_ids = paid_book_ids_for_user(request.user, book_ids)
             for row in progress_rows:
                 continue_reading.append(
-                    serialize_progress_card(row, user=request.user)
+                    serialize_progress_card(
+                        row, user=request.user, paid_book_ids=paid_book_ids
+                    )
                 )
-            activity_timestamps = serialize_activity_timestamps(request.user)
         category_lists = []
         for group in ctx['category_lists']:
             category_lists.append(
@@ -206,6 +235,7 @@ class CatalogAPIView(APIView):
                             authenticated=authenticated,
                             user=request.user if authenticated else None,
                             status_by_book_id=status_by_book_id,
+                            paid_book_ids=paid_book_ids,
                         )
                         for item in group['items'][:5]
                     ],
@@ -218,6 +248,7 @@ class CatalogAPIView(APIView):
                 authenticated=authenticated,
                 user=request.user if authenticated else None,
                 status_by_book_id=status_by_book_id,
+                paid_book_ids=paid_book_ids,
             )
             for item in ctx['shelf']
         ]
@@ -252,9 +283,21 @@ class CatalogAPIView(APIView):
         )
 
 
-def _card_with_status(book, translation, *, authenticated, status_by_book_id, user=None):
+def _card_with_status(
+    book,
+    translation,
+    *,
+    authenticated,
+    status_by_book_id,
+    user=None,
+    paid_book_ids: set[int] | None = None,
+):
     card = serialize_book_card(
-        book, translation, authenticated=authenticated, user=user
+        book,
+        translation,
+        authenticated=authenticated,
+        user=user,
+        paid_book_ids=paid_book_ids,
     )
     if authenticated:
         card['reading_status'] = status_by_book_id.get(book.pk)
@@ -292,19 +335,30 @@ class MyLibraryAPIView(APIView):
         statuses_to_load = (
             [filter_status] if filter_status else list(ReadingProgress.Status.values)
         )
-        for status_value in statuses_to_load:
-            cards = [
-                serialize_progress_card(row, user=request.user)
-                for row in progress_queryset_for_user(request.user, status_value)
+        rows_by_status = {
+            status_value: list(progress_queryset_for_user(request.user, status_value))
+            for status_value in statuses_to_load
+        }
+        all_book_ids = [
+            row.book_id
+            for rows in rows_by_status.values()
+            for row in rows
+        ]
+        paid_ids = paid_book_ids_for_user(request.user, all_book_ids)
+        for status_value, rows in rows_by_status.items():
+            payload[status_value] = [
+                serialize_progress_card(
+                    row, user=request.user, paid_book_ids=paid_ids
+                )
+                for row in rows
             ]
-            payload[status_value] = cards
 
         return Response(payload)
 
 
 def _serialize_similar_books(book, user, *, authenticated=False, limit=4):
     """Return up to `limit` published books in the same category, excluding `book`."""
-    similar_qs = (
+    similar_qs = list(
         Book.objects.filter(
             category=book.category,
             is_published=True,
@@ -313,6 +367,9 @@ def _serialize_similar_books(book, user, *, authenticated=False, limit=4):
         .prefetch_related('translations', 'audio_chapters')
         .order_by('author_name', 'slug')[:limit]
     )
+    paid_ids = None
+    if authenticated and user is not None:
+        paid_ids = paid_book_ids_for_user(user, [s.pk for s in similar_qs])
     result = []
     for similar in similar_qs:
         translation = similar.get_translation(DISPLAY_LANG)
@@ -322,6 +379,7 @@ def _serialize_similar_books(book, user, *, authenticated=False, limit=4):
                 translation,
                 authenticated=authenticated,
                 user=user if authenticated else None,
+                paid_book_ids=paid_ids,
             )
         )
     return result
@@ -405,11 +463,29 @@ class ReviewAPIView(APIView):
         book = self._get_published_book(slug)
         reviews_qs = book.reviews.select_related('user').order_by('-created_at')
         agg = book.reviews.aggregate(avg=Avg('rating'), total=Count('id'))
-        return Response({
+        paginator = Paginator(reviews_qs, REVIEW_PAGE_SIZE)
+        page = paginator.get_page(request.GET.get('page') or 1)
+        payload = {
             'count': agg['total'],
             'average_rating': round(agg['avg'], 2) if agg['avg'] else None,
-            'results': ReviewSerializer(reviews_qs, many=True).data,
-        })
+            'results': ReviewSerializer(page.object_list, many=True).data,
+            'pagination': {
+                'page': page.number,
+                'num_pages': page.paginator.num_pages,
+                'has_previous': page.has_previous(),
+                'has_next': page.has_next(),
+                'previous_page': (
+                    page.previous_page_number() if page.has_previous() else None
+                ),
+                'next_page': page.next_page_number() if page.has_next() else None,
+            },
+        }
+        if request.user and request.user.is_authenticated:
+            mine = book.reviews.filter(user=request.user).select_related('user').first()
+            payload['my_review'] = (
+                ReviewSerializer(mine).data if mine else None
+            )
+        return Response(payload)
 
     def post(self, request, slug):
         book = self._get_published_book(slug)

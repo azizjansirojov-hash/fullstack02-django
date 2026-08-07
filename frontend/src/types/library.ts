@@ -167,6 +167,9 @@ export type ReviewsResponse = {
   count: number
   average_rating: number | null
   results: ReviewItem[]
+  pagination: CatalogPagination
+  /** Present when the request is authenticated. */
+  my_review?: ReviewItem | null
 }
 
 /**

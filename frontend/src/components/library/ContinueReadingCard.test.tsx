@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ContinueReadingCard from './ContinueReadingCard'
 import * as libraryApi from '../../api/library'
@@ -81,11 +81,19 @@ describe('ContinueReadingCard ratings', () => {
             updated_at: '2026-01-01T00:00:00Z',
           },
         ],
+        pagination: {
+          page: 1,
+          num_pages: 1,
+          has_previous: false,
+          has_next: false,
+          previous_page: null,
+          next_page: null,
+        },
       },
     })
   })
 
-  it('renders interactive stars, aggregate, actions in Tinglash→Boshidan→Davom order, and comment form', async () => {
+  it('renders interactive stars, aggregate, actions in Davom→Tinglash→Boshidan order, and comment form', async () => {
     const onLaunch = vi.fn()
     render(
       <MemoryRouter>
@@ -96,10 +104,12 @@ describe('ContinueReadingCard ratings', () => {
     expect(screen.getByTestId('continue-reading-card')).toBeInTheDocument()
 
     const actions = screen.getByTestId('continue-reading-card').querySelector('.continue-card__actions')
-    const buttons = Array.from(actions.querySelectorAll('button')).map((b) => b.textContent?.trim())
-    expect(buttons[0]).toMatch(/Tinglash/)
-    expect(buttons[1]).toMatch(/Boshidan boshlash/)
-    expect(buttons[2]).toMatch(/O'qishni davom ettirish|O‘qishni davom ettirish/)
+    const labels = Array.from(actions.querySelectorAll(':scope > button')).map((b) => b.textContent?.trim())
+    expect(labels[0]).toMatch(/O'qishni davom ettirish|O‘qishni davom ettirish/)
+    expect(labels[1]).toMatch(/Tinglash/)
+    expect(labels[2]).toMatch(/Boshidan boshlash/)
+    expect(actions.querySelector('.continue-card__btn--continue')).toHaveClass('continue-card__btn--primary')
+    expect(actions.querySelector('.continue-card__btn--listen')).not.toHaveClass('continue-card__btn--primary')
 
     await waitFor(() => {
       expect(screen.getByText('4.0')).toBeInTheDocument()
@@ -132,6 +142,14 @@ describe('ContinueReadingCard ratings', () => {
             updated_at: '2026-01-01T00:00:00Z',
           },
         ],
+        pagination: {
+          page: 1,
+          num_pages: 1,
+          has_previous: false,
+          has_next: false,
+          previous_page: null,
+          next_page: null,
+        },
       },
     })
     libraryApi.updateReview.mockResolvedValue({
@@ -177,7 +195,7 @@ describe('ContinueReadingCard ratings', () => {
     libraryApi.getReviews
       .mockResolvedValueOnce({
         response: { ok: true },
-        data: { count: 0, average_rating: null, results: [] },
+        data: { count: 0, average_rating: null, results: [], pagination: { page: 1, num_pages: 1, has_previous: false, has_next: false, previous_page: null, next_page: null } },
       })
       .mockResolvedValueOnce({
         response: { ok: true },
@@ -194,6 +212,14 @@ describe('ContinueReadingCard ratings', () => {
               updated_at: '2026-01-01T00:00:00Z',
             },
           ],
+          pagination: {
+            page: 1,
+            num_pages: 1,
+            has_previous: false,
+            has_next: false,
+            previous_page: null,
+            next_page: null,
+          },
         },
       })
 

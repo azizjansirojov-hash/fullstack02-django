@@ -859,6 +859,10 @@ class ReviewAPITests(TestCase):
         self.assertEqual(data['count'], 0)
         self.assertIsNone(data['average_rating'])
         self.assertEqual(data['results'], [])
+        self.assertEqual(data['pagination']['page'], 1)
+        self.assertEqual(data['pagination']['num_pages'], 1)
+        self.assertFalse(data['pagination']['has_next'])
+        self.assertNotIn('my_review', data)
 
     def test_list_shows_reviews_and_average(self):
         Review.objects.create(user=self.user, book=self.book, rating=4, text='Good')
@@ -871,6 +875,71 @@ class ReviewAPITests(TestCase):
         usernames = {r['username'] for r in data['results']}
         self.assertIn('reviewer1', usernames)
         self.assertIn('reviewer2', usernames)
+        self.assertEqual(len(data['results']), 2)
+        self.assertEqual(data['pagination']['page'], 1)
+        self.assertFalse(data['pagination']['has_next'])
+
+    def test_reviews_pagination_caps_page_size_at_20(self):
+        users = [
+            User.objects.create_user(
+                username=f'revpage{i}',
+                password='Str0ng-Passw0rd!',
+                email=f'revpage{i}@example.com',
+            )
+            for i in range(25)
+        ]
+        for i, user in enumerate(users):
+            Review.objects.create(user=user, book=self.book, rating=5, text=f'r{i}')
+
+        page1 = self.client.get(self.reviews_url).json()
+        self.assertEqual(page1['count'], 25)
+        self.assertEqual(len(page1['results']), 20)
+        self.assertEqual(page1['pagination']['page'], 1)
+        self.assertEqual(page1['pagination']['num_pages'], 2)
+        self.assertTrue(page1['pagination']['has_next'])
+        self.assertEqual(page1['pagination']['next_page'], 2)
+        self.assertIsNone(page1['pagination']['previous_page'])
+
+        page2 = self.client.get(f'{self.reviews_url}?page=2').json()
+        self.assertEqual(len(page2['results']), 5)
+        self.assertEqual(page2['pagination']['page'], 2)
+        self.assertTrue(page2['pagination']['has_previous'])
+        self.assertEqual(page2['pagination']['previous_page'], 1)
+        self.assertFalse(page2['pagination']['has_next'])
+
+        ids1 = {r['id'] for r in page1['results']}
+        ids2 = {r['id'] for r in page2['results']}
+        self.assertFalse(ids1 & ids2)
+
+    def test_authenticated_my_review_even_when_not_on_first_page(self):
+        """Additive my_review is present when own review is older than page 1."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self._login()
+        mine = Review.objects.create(
+            user=self.user, book=self.book, rating=3, text='mine-old'
+        )
+        Review.objects.filter(pk=mine.pk).update(
+            created_at=timezone.now() - timedelta(days=30)
+        )
+        for i in range(20):
+            u = User.objects.create_user(
+                username=f'newer{i}',
+                password='Str0ng-Passw0rd!',
+                email=f'newer{i}@example.com',
+            )
+            Review.objects.create(user=u, book=self.book, rating=5, text=f'n{i}')
+
+        response = self.client.get(self.reviews_url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data['results']), 20)
+        self.assertNotIn('reviewer1', {r['username'] for r in data['results']})
+        self.assertIsNotNone(data.get('my_review'))
+        self.assertEqual(data['my_review']['username'], 'reviewer1')
+        self.assertEqual(data['my_review']['text'], 'mine-old')
 
     def test_reviews_not_exposed_for_unpublished_book(self):
         url = reverse('library_api:book-reviews', kwargs={'slug': self.unpublished.slug})

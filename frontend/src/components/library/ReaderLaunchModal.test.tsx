@@ -1,5 +1,5 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ReaderLaunchModal from './ReaderLaunchModal'
 import * as libraryApi from '../../api/library'
@@ -86,7 +86,7 @@ describe('ReaderLaunchModal purchase gating', () => {
     }))
     vi.mocked(libraryApi.getReviews).mockResolvedValue({
       response: { ok: true } as Response,
-      data: { count: 0, average_rating: null, results: [] },
+      data: { count: 0, average_rating: null, results: [], pagination: { page: 1, num_pages: 1, has_previous: false, has_next: false, previous_page: null, next_page: null } },
     })
   })
 
@@ -122,5 +122,31 @@ describe('ReaderLaunchModal purchase gating', () => {
       expect(within(dialog).getByRole('link', { name: /Barchasini ko/ })).toBeInTheDocument()
     })
     expect(within(dialog).getByRole('radio', { name: '5 yulduz bilan baholash' })).toBeInTheDocument()
+  })
+
+  it('surfaces an error when mark-finished fails', async () => {
+    vi.mocked(libraryApi.getReadingProgress).mockResolvedValue({
+      response: { ok: true } as Response,
+      data: {
+        exists: true,
+        status: 'reading',
+        mode: 'flip',
+        page: 9,
+        total_pages: 10,
+        chapter_id: null,
+        position: 0,
+        updated_at: '2026-07-31T00:00:00Z',
+      },
+    })
+    vi.mocked(libraryApi.setReadingStatus).mockResolvedValue({
+      response: { ok: false, status: 500 } as Response,
+      data: null,
+    })
+    renderModal(publicBook)
+    const finish = await screen.findByRole('button', { name: /Tugatdim/i })
+    fireEvent.click(finish)
+    expect(
+      await screen.findByText(/Kitobni tugatilgan deb belgilab bo‘lmadi/),
+    ).toBeInTheDocument()
   })
 })

@@ -72,8 +72,11 @@ export async function removePlanned(slug: string) {
   )
 }
 
-export async function getReviews(slug: string) {
-  return apiFetch<ReviewsResponse>(`/api/library/${encodeURIComponent(slug)}/reviews/`)
+export async function getReviews(slug: string, page = 1) {
+  const qs = page > 1 ? `?page=${page}` : ''
+  return apiFetch<ReviewsResponse>(
+    `/api/library/${encodeURIComponent(slug)}/reviews/${qs}`,
+  )
 }
 
 export async function createReview(

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ReviewSection from './ReviewSection'
 import * as libraryApi from '../../api/library'
@@ -26,7 +26,19 @@ vi.mock('../../api/library', () => ({
 
 const emptyReviewsResponse = {
   response: { ok: true },
-  data: { count: 0, average_rating: null, results: [] },
+  data: {
+    count: 0,
+    average_rating: null,
+    results: [],
+    pagination: {
+      page: 1,
+      num_pages: 1,
+      has_previous: false,
+      has_next: false,
+      previous_page: null,
+      next_page: null,
+    },
+  },
 }
 
 const reviewsWithItems = {
@@ -52,6 +64,14 @@ const reviewsWithItems = {
         updated_at: '2026-01-02T00:00:00Z',
       },
     ],
+    pagination: {
+      page: 1,
+      num_pages: 1,
+      has_previous: false,
+      has_next: false,
+      previous_page: null,
+      next_page: null,
+    },
   },
 }
 
@@ -70,6 +90,22 @@ const myReviewResponse = {
         updated_at: '2026-01-10T00:00:00Z',
       },
     ],
+    my_review: {
+      id: 10,
+      username: 'currentuser',
+      rating: 4,
+      text: 'Yaxshi kitob.',
+      created_at: '2026-01-10T00:00:00Z',
+      updated_at: '2026-01-10T00:00:00Z',
+    },
+    pagination: {
+      page: 1,
+      num_pages: 1,
+      has_previous: false,
+      has_next: false,
+      previous_page: null,
+      next_page: null,
+    },
   },
 }
 
@@ -165,6 +201,14 @@ describe('ReviewSection', () => {
               updated_at: '2026-02-01T00:00:00Z',
             },
           ],
+          pagination: {
+            page: 1,
+            num_pages: 1,
+            has_previous: false,
+            has_next: false,
+            previous_page: null,
+            next_page: null,
+          },
         },
       })
 

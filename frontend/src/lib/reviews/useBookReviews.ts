@@ -15,6 +15,8 @@ export type UseBookReviewsResult = {
   count: number
   averageRating: number | null
   loading: boolean
+  loadingMore: boolean
+  hasMore: boolean
   error: string | null
   myReview: ReviewItem | null
   formStatus: ReviewFormStatus
@@ -22,6 +24,7 @@ export type UseBookReviewsResult = {
   isAuthenticated: boolean
   ready: boolean
   reload: () => Promise<void>
+  loadMore: () => Promise<void>
   /** POST or PUT rating; preserves existing text when updating. */
   submitRating: (rating: number, text?: string) => Promise<boolean>
   /** Full create/update with explicit text (ReviewSection form). */
@@ -39,11 +42,32 @@ export function useBookReviews(slug: string | null | undefined): UseBookReviewsR
   const [reviews, setReviews] = useState<ReviewItem[]>([])
   const [count, setCount] = useState(0)
   const [averageRating, setAverageRating] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(Boolean(slug))
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [myReview, setMyReview] = useState<ReviewItem | null>(null)
   const [formStatus, setFormStatus] = useState<ReviewFormStatus>('idle')
   const [formError, setFormError] = useState<string | null>(null)
+
+  const applyMyReview = useCallback(
+    (data: {
+      my_review?: ReviewItem | null
+      results: ReviewItem[]
+    }) => {
+      if (data.my_review !== undefined) {
+        setMyReview(data.my_review)
+        return
+      }
+      if (user) {
+        setMyReview(data.results.find((r) => r.username === user.username) || null)
+      } else {
+        setMyReview(null)
+      }
+    },
+    [user],
+  )
 
   const reload = useCallback(async () => {
     if (!slug) {
@@ -53,7 +77,7 @@ export function useBookReviews(slug: string | null | undefined): UseBookReviewsR
     setLoading(true)
     setError(null)
     try {
-      const { response, data } = await getReviews(slug)
+      const { response, data } = await getReviews(slug, 1)
       if (!response.ok || !data) {
         setError('Sharhlar yuklanmadi.')
         return
@@ -61,17 +85,45 @@ export function useBookReviews(slug: string | null | undefined): UseBookReviewsR
       setReviews(data.results)
       setCount(data.count)
       setAverageRating(data.average_rating)
-      if (user) {
-        setMyReview(data.results.find((r) => r.username === user.username) || null)
-      } else {
-        setMyReview(null)
-      }
+      setPage(data.pagination?.page ?? 1)
+      setHasMore(Boolean(data.pagination?.has_next))
+      applyMyReview(data)
     } catch {
       setError('Sharhlar yuklanmadi.')
     } finally {
       setLoading(false)
     }
-  }, [slug, user])
+  }, [slug, applyMyReview])
+
+  const loadMore = useCallback(async () => {
+    if (!slug || !hasMore || loadingMore) return
+    const nextPage = page + 1
+    setLoadingMore(true)
+    setError(null)
+    try {
+      const { response, data } = await getReviews(slug, nextPage)
+      if (!response.ok || !data) {
+        setError('Sharhlar yuklanmadi.')
+        return
+      }
+      setReviews((prev) => {
+        const seen = new Set(prev.map((r) => r.id))
+        const appended = data.results.filter((r) => !seen.has(r.id))
+        return [...prev, ...appended]
+      })
+      setCount(data.count)
+      setAverageRating(data.average_rating)
+      setPage(data.pagination?.page ?? nextPage)
+      setHasMore(Boolean(data.pagination?.has_next))
+      if (data.my_review !== undefined) {
+        setMyReview(data.my_review)
+      }
+    } catch {
+      setError('Sharhlar yuklanmadi.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [slug, hasMore, loadingMore, page])
 
   useEffect(() => {
     if (!ready || !slug) {
@@ -147,6 +199,7 @@ export function useBookReviews(slug: string | null | undefined): UseBookReviewsR
       return true
     } catch {
       setFormStatus('error')
+      setFormError("Sharhni o‘chirib bo‘lmadi.")
       return false
     }
   }, [slug, reload])
@@ -156,6 +209,8 @@ export function useBookReviews(slug: string | null | undefined): UseBookReviewsR
     count,
     averageRating,
     loading,
+    loadingMore,
+    hasMore,
     error,
     myReview,
     formStatus,
@@ -163,6 +218,7 @@ export function useBookReviews(slug: string | null | undefined): UseBookReviewsR
     isAuthenticated,
     ready,
     reload,
+    loadMore,
     submitRating,
     submitReview,
     removeReview,

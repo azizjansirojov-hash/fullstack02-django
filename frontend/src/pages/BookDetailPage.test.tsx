@@ -1,5 +1,5 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BookDetailPage from './BookDetailPage'
 import * as libraryApi from '../api/library'
@@ -90,7 +90,7 @@ describe('BookDetailPage purchase gating', () => {
     mockAuth()
     libraryApi.getReviews.mockResolvedValue({
       response: { ok: true },
-      data: { count: 0, average_rating: null, results: [] },
+      data: { count: 0, average_rating: null, results: [], pagination: { page: 1, num_pages: 1, has_previous: false, has_next: false, previous_page: null, next_page: null } },
     })
   })
 
@@ -154,6 +154,14 @@ describe('BookDetailPage purchase gating', () => {
             updated_at: '2026-01-01T00:00:00Z',
           },
         ],
+        pagination: {
+          page: 1,
+          num_pages: 1,
+          has_previous: false,
+          has_next: false,
+          previous_page: null,
+          next_page: null,
+        },
       },
     })
     renderPage('public-book')
@@ -166,7 +174,7 @@ describe('BookDetailPage purchase gating', () => {
     expect(screen.getByPlaceholderText(/Fikringizni yozing/)).toBeInTheDocument()
   })
 
-  it('orders hero actions Tinglash → Boshidan → Davom with equal ghost styling', async () => {
+  it('orders hero actions Davom → Tinglash → Boshidan with Continue as primary', async () => {
     libraryApi.fetchBookDetail.mockImplementation(async () => ({
       response: { ok: true },
       data: publicBook,
@@ -181,15 +189,18 @@ describe('BookDetailPage purchase gating', () => {
     const labels = Array.from(actions.querySelectorAll('a, button'))
       .map((el) => el.textContent?.trim())
       .filter(Boolean)
+    const davomIdx = labels.findIndex((t) => t === 'O‘qishni davom ettirish')
     const tinglashIdx = labels.findIndex((t) => t === 'Tinglash')
     const boshidanIdx = labels.findIndex((t) => t === 'Boshidan boshlash')
-    const davomIdx = labels.findIndex((t) => t === 'O‘qishni davom ettirish')
-    expect(tinglashIdx).toBeGreaterThanOrEqual(0)
+    expect(davomIdx).toBeGreaterThanOrEqual(0)
+    expect(tinglashIdx).toBeGreaterThan(davomIdx)
     expect(boshidanIdx).toBeGreaterThan(tinglashIdx)
-    expect(davomIdx).toBeGreaterThan(boshidanIdx)
 
     const continueLink = screen.getByRole('link', { name: 'O‘qishni davom ettirish' })
-    expect(continueLink.className).toContain('reader-hero__read--ghost')
+    expect(continueLink.className).toContain('reader-hero__read')
+    expect(continueLink.className).not.toContain('reader-hero__read--ghost')
+    expect(screen.getByRole('button', { name: 'Tinglash' }).className).toContain(
+      'reader-hero__read--ghost',
+    )
   })
 })
-
