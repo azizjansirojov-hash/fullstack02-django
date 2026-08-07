@@ -192,21 +192,27 @@ class StaleGenerationQueueTests(TestCase):
 class ProductionSettingsRejectionTests(SimpleTestCase):
     """Boot-time ImproperlyConfigured for weak secrets / wildcard hosts."""
 
-    def test_weak_secret_rejected_when_debug_false(self):
+    # ≥50 chars, no weak-marker substrings (secret/test/password/…).
+    _STRONG_SECRET = (
+        'qa-hardening-boot-key-abcdefghijklmnopqrstuvwxyz0123456789!!'
+    )
+
+    def _reject_secret_proc(self, secret_key):
         import os
         import subprocess
         import sys
 
-        proc = subprocess.run(
+        return subprocess.run(
             [
                 sys.executable,
                 '-c',
                 (
                     'import os; '
-                    "os.environ['SECRET_KEY']='change-me-to-a-long-random-string'; "
+                    f"os.environ['SECRET_KEY']={secret_key!r}; "
                     "os.environ['DEBUG']='False'; "
                     "os.environ['ALLOWED_HOSTS']='localhost'; "
                     "os.environ['ALLOW_CONSOLE_EMAIL']='1'; "
+                    "os.environ['ENVIRONMENT']='staging'; "
                     "os.environ['USE_TLS']='0'; "
                     "os.environ['DJANGO_SETTINGS_MODULE']='backend.settings'; "
                     'import django; django.setup()'
@@ -217,13 +223,29 @@ class ProductionSettingsRejectionTests(SimpleTestCase):
             text=True,
             env={
                 **os.environ,
-                'SECRET_KEY': 'change-me-to-a-long-random-string',
+                'SECRET_KEY': secret_key,
                 'DEBUG': 'False',
                 'ALLOWED_HOSTS': 'localhost',
                 'ALLOW_CONSOLE_EMAIL': '1',
+                'ENVIRONMENT': 'staging',
                 'USE_TLS': '0',
             },
         )
+
+    def test_weak_secret_rejected_when_debug_false(self):
+        proc = self._reject_secret_proc('change-me-to-a-long-random-string')
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        combined = proc.stdout + proc.stderr
+        self.assertIn('SECRET_KEY', combined)
+
+    def test_changeme_secret_rejected_when_debug_false(self):
+        proc = self._reject_secret_proc('changeme')
+        self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        combined = proc.stdout + proc.stderr
+        self.assertIn('SECRET_KEY', combined)
+
+    def test_short_secret_rejected_when_debug_false(self):
+        proc = self._reject_secret_proc('short')
         self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
         combined = proc.stdout + proc.stderr
         self.assertIn('SECRET_KEY', combined)
@@ -233,16 +255,18 @@ class ProductionSettingsRejectionTests(SimpleTestCase):
         import subprocess
         import sys
 
+        strong = self._STRONG_SECRET
         proc = subprocess.run(
             [
                 sys.executable,
                 '-c',
                 (
                     'import os; '
-                    "os.environ['SECRET_KEY']='qa-strong-secret-key-32chars-min!!'; "
+                    f"os.environ['SECRET_KEY']={strong!r}; "
                     "os.environ['DEBUG']='False'; "
                     "os.environ['ALLOWED_HOSTS']='*'; "
                     "os.environ['ALLOW_CONSOLE_EMAIL']='1'; "
+                    "os.environ['ENVIRONMENT']='staging'; "
                     "os.environ['USE_TLS']='0'; "
                     "os.environ['DJANGO_SETTINGS_MODULE']='backend.settings'; "
                     'import django; django.setup()'
@@ -253,10 +277,11 @@ class ProductionSettingsRejectionTests(SimpleTestCase):
             text=True,
             env={
                 **os.environ,
-                'SECRET_KEY': 'qa-strong-secret-key-32chars-min!!',
+                'SECRET_KEY': strong,
                 'DEBUG': 'False',
                 'ALLOWED_HOSTS': '*',
                 'ALLOW_CONSOLE_EMAIL': '1',
+                'ENVIRONMENT': 'staging',
                 'USE_TLS': '0',
             },
         )
@@ -269,14 +294,16 @@ class ProductionSettingsRejectionTests(SimpleTestCase):
         import subprocess
         import sys
 
+        strong = self._STRONG_SECRET
         # Production boot also requires REDIS_URL (settings.py cache guard).
         # Use a URL only for config load — django.setup() does not connect.
         boot_env = {
             **os.environ,
-            'SECRET_KEY': 'qa-strong-secret-key-32chars-min!!',
+            'SECRET_KEY': strong,
             'DEBUG': 'False',
             'ALLOWED_HOSTS': 'localhost,127.0.0.1',
             'ALLOW_CONSOLE_EMAIL': '1',
+            'ENVIRONMENT': 'staging',
             'USE_TLS': '0',
             'REDIS_URL': 'redis://127.0.0.1:6379/15',
             'E2E_RELAX_THROTTLE': '0',
@@ -287,10 +314,11 @@ class ProductionSettingsRejectionTests(SimpleTestCase):
                 '-c',
                 (
                     'import os; '
-                    "os.environ['SECRET_KEY']='qa-strong-secret-key-32chars-min!!'; "
+                    f"os.environ['SECRET_KEY']={strong!r}; "
                     "os.environ['DEBUG']='False'; "
                     "os.environ['ALLOWED_HOSTS']='localhost,127.0.0.1'; "
                     "os.environ['ALLOW_CONSOLE_EMAIL']='1'; "
+                    "os.environ['ENVIRONMENT']='staging'; "
                     "os.environ['USE_TLS']='0'; "
                     "os.environ['REDIS_URL']='redis://127.0.0.1:6379/15'; "
                     "os.environ['E2E_RELAX_THROTTLE']='0'; "

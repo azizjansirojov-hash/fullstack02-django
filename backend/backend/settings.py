@@ -26,12 +26,21 @@ DEBUG = env.bool('DEBUG', default=False)
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', 'testserver'])
 
 _WEAK_SECRET_MARKERS = (
+    'changeme',
     'change-me',
-    'docker-build-secret',
-    'insecure',
     'django-insecure',
+    'docker-build-secret',
+    'secret',
+    'password',
+    'insecure',
+    'example',
+    'test',
+    'default',
 )
-if not SECRET_KEY or any(m in SECRET_KEY.lower() for m in _WEAK_SECRET_MARKERS):
+_secret = (SECRET_KEY or '').lower()
+_weak_by_marker = (not SECRET_KEY) or any(m in _secret for m in _WEAK_SECRET_MARKERS)
+_weak_by_length = len(SECRET_KEY or '') < 50
+if _weak_by_marker or _weak_by_length:
     if not DEBUG:
         raise ImproperlyConfigured(
             'SECRET_KEY must be set to a long random value in production. '
@@ -141,13 +150,8 @@ if FRONTEND_DIST:
     if not FRONTEND_DIST.is_absolute():
         FRONTEND_DIST = (BASE_DIR.parent / FRONTEND_DIST).resolve()
 
-# When True (and FRONTEND_DIST), /library/<slug>/read/ serves the React reader shell.
-# Phase 4: React reader is the only immersive reader. Kept for docs/parity with VITE_*.
-REACT_READER_ENABLED = env('REACT_READER_ENABLED', default='true').lower() in (
-    '1',
-    'true',
-    'yes',
-)
+# When FRONTEND_DIST is set, /library/<slug>/read/ serves the React reader shell.
+# React is the only immersive reader.
 
 # Django → SPA origin (mirror of VITE_DJANGO_ORIGIN on the frontend).
 # Empty / "same" = same-origin relative URLs (Docker with FRONTEND_DIST).
@@ -253,6 +257,20 @@ _csrf_default = [
     'http://127.0.0.1:5173',
 ]
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=_csrf_default)
+# Reject wildcards / overly permissive origins (same posture as ALLOWED_HOSTS).
+_csrf_bad = [
+    o
+    for o in CSRF_TRUSTED_ORIGINS
+    if (not o)
+    or '*' in o
+    or o.strip() in ('null', 'Null')
+]
+if _csrf_bad:
+    raise ImproperlyConfigured(
+        'CSRF_TRUSTED_ORIGINS must be an explicit origin list '
+        '(no wildcards or empty entries). Bad: '
+        + ', '.join(repr(o) for o in _csrf_bad)
+    )
 
 # Email (password reset)
 EMAIL_BACKEND = env(
@@ -266,18 +284,27 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 ALLOW_CONSOLE_EMAIL = env.bool('ALLOW_CONSOLE_EMAIL', default=False)
+# staging | production | '' — console email when DEBUG=False requires ENVIRONMENT=staging
+ENVIRONMENT = env('ENVIRONMENT', default='')
 RIGHTS_CONTACT_EMAIL = env('RIGHTS_CONTACT_EMAIL', default='')
 
 _console_backends = {
     'django.core.mail.backends.console.EmailBackend',
     'django.core.mail.backends.locmem.EmailBackend',
 }
-if not DEBUG and EMAIL_BACKEND in _console_backends and not ALLOW_CONSOLE_EMAIL:
-    raise ImproperlyConfigured(
-        'Production (DEBUG=False) requires a real EMAIL_BACKEND (SMTP). '
-        'Set EMAIL_HOST_* in .env, or ALLOW_CONSOLE_EMAIL=1 only for staging. '
-        'See DEPLOY.md.'
-    )
+if not DEBUG and EMAIL_BACKEND in _console_backends:
+    if not ALLOW_CONSOLE_EMAIL:
+        raise ImproperlyConfigured(
+            'Production (DEBUG=False) requires a real EMAIL_BACKEND (SMTP). '
+            'Set EMAIL_HOST_* in .env, or ALLOW_CONSOLE_EMAIL=1 with '
+            'ENVIRONMENT=staging for staging-only smoke tests. See DEPLOY.md.'
+        )
+    if ENVIRONMENT != 'staging':
+        raise ImproperlyConfigured(
+            'ALLOW_CONSOLE_EMAIL=1 is only permitted when ENVIRONMENT=staging '
+            '(DEBUG=False + console/locmem email). For production set a real '
+            'SMTP EMAIL_BACKEND and ALLOW_CONSOLE_EMAIL=0. See DEPLOY.md.'
+        )
 
 # TLS / cookie hardening. USE_TLS=0 for local DEBUG=False without HTTPS.
 USE_TLS = env.bool('USE_TLS', default=not DEBUG)
