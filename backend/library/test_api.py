@@ -1080,9 +1080,9 @@ class ReviewAPITests(TestCase):
     def test_duplicate_review_integrity_error_is_handled_as_400(self):
         self._login()
         with (
-            patch('library.api_views.Review.objects.filter') as mock_filter,
+            patch('library.api.reviews.Review.objects.filter') as mock_filter,
             patch(
-                'library.api_views.Review.objects.create',
+                'library.api.reviews.Review.objects.create',
                 side_effect=IntegrityError('unique_user_book_review'),
             ),
         ):

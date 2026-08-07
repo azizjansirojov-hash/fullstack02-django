@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppSidebar from './AppSidebar'
 import * as notificationsApi from '../../api/notifications'
@@ -83,6 +83,16 @@ describe('AppSidebar notifications', () => {
       expect(notificationsApi.markNotificationRead).toHaveBeenCalledWith(7)
     })
     expect(screen.queryByLabelText('1 ta o‘qilmagan bildirishnoma')).not.toBeInTheDocument()
+  })
+
+  it('surfaces a visible error when notifications fail to load', async () => {
+    vi.mocked(notificationsApi.fetchNotifications).mockRejectedValue(new Error('offline'))
+    renderSidebar()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Bildirishnomalar/ }))
+    expect(
+      await screen.findByRole('alert'),
+    ).toHaveTextContent("Bildirishnomalarni yuklab bo‘lmadi.")
   })
 })
 
