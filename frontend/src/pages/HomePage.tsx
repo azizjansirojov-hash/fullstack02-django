@@ -15,6 +15,7 @@ export default function HomePage() {
   const {
     catalog,
     error,
+    planError,
     loading,
     launchBook,
     setLaunchBook,
@@ -29,6 +30,7 @@ export default function HomePage() {
   const canRead = Boolean(catalog?.can_read ?? isAuthenticated)
   const continueReading = catalog?.continue_reading || []
   const activityTimestamps = catalog?.activity_timestamps || []
+  const activityStats = catalog?.activity_stats ?? null
   const categories = catalog?.category_lists || []
   const newBooks = catalog?.shelf || []
   const planActions = isAuthenticated
@@ -40,6 +42,11 @@ export default function HomePage() {
 
   return (
     <>
+      {planError ? (
+        <p className="dash-empty" role="alert">
+          {planError}
+        </p>
+      ) : null}
       <div className="dash-top">
         <ContinueReadingCard
           book={continueReading[0] || null}
@@ -53,8 +60,9 @@ export default function HomePage() {
         <WeeklyActivityWidget
           continueReading={continueReading}
           activityTimestamps={activityTimestamps}
-        />
-      </div>
+          activityStats={activityStats}
+          onGoalUpdated={() => reload({ silent: true })}
+        />      </div>
 
       <section className="dash-section" aria-labelledby="ruknlar-title">
         <div className="dash-section__head">

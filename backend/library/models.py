@@ -508,6 +508,37 @@ class ReadingProgress(models.Model):
         return f'{self.user_id}:{self.book_id} {self.status} {self.mode}@{self.page}'
 
 
+class ReadingSession(models.Model):
+    """Per-user daily reading time accumulated from progress heartbeats."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='reading_sessions',
+    )
+    date = models.DateField(db_index=True)
+    minutes_read = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'date'],
+                name='unique_user_reading_session_date',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['user', '-date'],
+                name='library_rs_user_date',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} {self.date} {self.minutes_read}m'
+
+
 class Purchase(models.Model):
     """Entitlement record linking a user to a book (manual/admin or future gateway)."""
 

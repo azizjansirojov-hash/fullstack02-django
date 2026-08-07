@@ -104,3 +104,10 @@ export async function deleteReview(slug: string) {
     method: 'DELETE',
   })
 }
+
+export async function updateDailyGoal(dailyGoalMinutes: number) {
+  return apiFetch<{ daily_goal_minutes: number }>('/api/preferences/', {
+    method: 'PUT',
+    body: JSON.stringify({ daily_goal_minutes: dailyGoalMinutes }),
+  })
+}

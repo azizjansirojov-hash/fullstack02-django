@@ -12,6 +12,11 @@ api_urlpatterns = [
     path('api/login/', views.LoginAPIView.as_view(), name='api-login'),
     path('api/csrf/', views.CsrfAPIView.as_view(), name='api-csrf'),
     path('api/me/', views.MeAPIView.as_view(), name='api-me'),
+    path(
+        'api/preferences/',
+        views.PreferencesAPIView.as_view(),
+        name='api-preferences',
+    ),
     path('api/logout/', views.LogoutAPIView.as_view(), name='api-logout'),
     path(
         'api/token/refresh/',

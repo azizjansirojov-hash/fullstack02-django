@@ -1,8 +1,11 @@
-import type { ProgressCard } from '../../types/library'
+import { useEffect, useState } from 'react'
+import type { ActivityStats, ProgressCard } from '../../types/library'
+import { updateDailyGoal } from '../../api/library'
 
 const DAY_LABELS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'] as const
 const STREAK_MILESTONES = [3, 7, 14, 21, 30, 60, 100] as const
-const DAILY_GOAL = 1
+const GOAL_CHIPS = [10, 20, 30, 60] as const
+const DEFAULT_GOAL = 20
 
 function startOfLocalDay(date: Date) {
   const d = new Date(date)
@@ -52,6 +55,8 @@ function nextMilestone(streak: number) {
 export type WeeklyActivityWidgetProps = {
   continueReading?: ProgressCard[]
   activityTimestamps?: string[]
+  activityStats?: ActivityStats | null
+  onGoalUpdated?: (stats: ActivityStats) => void
 }
 
 /**
@@ -60,6 +65,8 @@ export type WeeklyActivityWidgetProps = {
 export default function WeeklyActivityWidget({
   continueReading = [],
   activityTimestamps = [],
+  activityStats = null,
+  onGoalUpdated,
 }: WeeklyActivityWidgetProps) {
   const today = startOfLocalDay(new Date())
   const activeKeys = collectActiveKeys(activityTimestamps, continueReading)
@@ -78,11 +85,58 @@ export default function WeeklyActivityWidget({
   })
 
   const activeThisWeek = days.filter((d) => d.active).length
-  const todayActive = activeKeys.has(dayKey(today))
-  const todayProgress = todayActive ? DAILY_GOAL : 0
   const streak = computeStreak(activeKeys, today)
   const milestone = nextMilestone(streak)
   const ringProgress = activeThisWeek / 7
+
+  const todayMinutes = activityStats?.today_minutes_read ?? 0
+  const [goalMinutes, setGoalMinutes] = useState(
+    activityStats?.daily_goal_minutes ?? DEFAULT_GOAL,
+  )
+  const [goalEditorOpen, setGoalEditorOpen] = useState(false)
+  const [goalDraft, setGoalDraft] = useState(String(goalMinutes))
+  const [goalSaving, setGoalSaving] = useState(false)
+  const [goalError, setGoalError] = useState('')
+
+  useEffect(() => {
+    if (activityStats?.daily_goal_minutes != null) {
+      setGoalMinutes(activityStats.daily_goal_minutes)
+      setGoalDraft(String(activityStats.daily_goal_minutes))
+    }
+  }, [activityStats?.daily_goal_minutes])
+
+  const goalProgressPercent =
+    activityStats?.goal_progress_percent ??
+    (goalMinutes > 0 ? Math.min(100, Math.round((todayMinutes / goalMinutes) * 100)) : 0)
+
+  async function saveGoal(nextGoal: number) {
+    if (nextGoal < 5 || nextGoal > 300) {
+      setGoalError('5–300 daqiqa oralig‘ida kiriting.')
+      return
+    }
+    setGoalSaving(true)
+    setGoalError('')
+    try {
+      const { response, data } = await updateDailyGoal(nextGoal)
+      if (!response.ok || !data) {
+        setGoalError('Saqlab bo‘lmadi. Qayta urinib ko‘ring.')
+        return
+      }
+      const saved = data.daily_goal_minutes
+      setGoalMinutes(saved)
+      setGoalDraft(String(saved))
+      setGoalEditorOpen(false)
+      onGoalUpdated?.({
+        today_minutes_read: todayMinutes,
+        daily_goal_minutes: saved,
+        goal_progress_percent: Math.min(100, Math.round((todayMinutes / saved) * 100)),
+      })
+    } catch {
+      setGoalError('Saqlab bo‘lmadi. Qayta urinib ko‘ring.')
+    } finally {
+      setGoalSaving(false)
+    }
+  }
 
   return (
     <div className="dash-card">
@@ -90,44 +144,72 @@ export default function WeeklyActivityWidget({
         <h2 className="dash-section__title" style={{ fontSize: '1rem' }}>
           Haftalik faollik
         </h2>
+        {activityStats != null ? (
+          <button
+            type="button"
+            className="activity-goal-settings"
+            aria-label="Kunlik maqsadni sozlash"
+            aria-expanded={goalEditorOpen}
+            onClick={() => {
+              setGoalDraft(String(goalMinutes))
+              setGoalError('')
+              setGoalEditorOpen((open) => !open)
+            }}
+          >
+            ⚙
+          </button>
+        ) : null}
       </div>
       <div className="activity-widget">
-        <div
-          className="activity-ring"
-          aria-label={`Bugungi maqsad: ${todayProgress} / ${DAILY_GOAL}`}
-        >
-          <svg viewBox="0 0 120 120" aria-hidden>
-            <circle
-              cx="60"
-              cy="60"
-              r="52"
-              fill="none"
-              stroke="rgba(214,255,69,0.15)"
-              strokeWidth="6"
-            />
-            <circle
-              cx="60"
-              cy="60"
-              r="52"
-              fill="none"
-              stroke="url(#activity-grad)"
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeDasharray={`${ringProgress * 327} 327`}
-            />
-            <defs>
-              <linearGradient id="activity-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#e4ff54" />
-                <stop offset="55%" stopColor="#4fe08a" />
-                <stop offset="100%" stopColor="#2fd39b" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div className="activity-ring__label">
-            <small>Bugun</small>
-            <strong>
-              {todayProgress}/{DAILY_GOAL}
-            </strong>
+        <div className="activity-ring-col">
+          <div
+            className="activity-ring"
+            aria-label={`Bugungi maqsad: ${todayMinutes} / ${goalMinutes} daqiqa`}
+          >
+            <svg viewBox="0 0 120 120" aria-hidden>
+              <circle
+                cx="60"
+                cy="60"
+                r="52"
+                fill="none"
+                stroke="rgba(214,255,69,0.15)"
+                strokeWidth="6"
+              />
+              <circle
+                cx="60"
+                cy="60"
+                r="52"
+                fill="none"
+                stroke="url(#activity-grad)"
+                strokeWidth="6"
+                strokeLinecap="round"
+                strokeDasharray={`${ringProgress * 327} 327`}
+              />
+              <defs>
+                <linearGradient id="activity-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#e4ff54" />
+                  <stop offset="55%" stopColor="#4fe08a" />
+                  <stop offset="100%" stopColor="#2fd39b" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="activity-ring__label">
+              <small>Bugun</small>
+              <strong>
+                {todayMinutes}/{goalMinutes}
+              </strong>
+            </div>
+          </div>
+          <div className="activity-goal-bar" aria-hidden={activityStats == null}>
+            <div className="activity-goal-bar__track">
+              <div
+                className="activity-goal-bar__fill"
+                style={{ width: `${goalProgressPercent}%` }}
+              />
+            </div>
+            <span className="activity-goal-bar__label">
+              Bugungi maqsad: {todayMinutes} / {goalMinutes} daq
+            </span>
           </div>
         </div>
 
@@ -156,6 +238,52 @@ export default function WeeklyActivityWidget({
           </div>
         </div>
       </div>
+
+      {goalEditorOpen ? (
+        <div className="activity-goal-editor" role="group" aria-label="Kunlik maqsad">
+          <div className="activity-goal-chips">
+            {GOAL_CHIPS.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                className={`activity-goal-chip${goalDraft === String(chip) ? ' is-active' : ''}`}
+                disabled={goalSaving}
+                onClick={() => {
+                  setGoalDraft(String(chip))
+                  void saveGoal(chip)
+                }}
+              >
+                {chip} daq
+              </button>
+            ))}
+          </div>
+          <div className="activity-goal-custom">
+            <label htmlFor="activity-goal-input">Boshqa</label>
+            <input
+              id="activity-goal-input"
+              type="number"
+              min={5}
+              max={300}
+              value={goalDraft}
+              disabled={goalSaving}
+              onChange={(e) => setGoalDraft(e.target.value)}
+            />
+            <button
+              type="button"
+              className="activity-goal-save"
+              disabled={goalSaving}
+              onClick={() => void saveGoal(Number(goalDraft))}
+            >
+              Saqlash
+            </button>
+          </div>
+          {goalError ? (
+            <p className="activity-goal-error" role="alert">
+              {goalError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from users.authentication import JWTCookieAuthentication
 
 from ..access import paid_book_ids_for_user
+from ..activity import serialize_activity_stats
 from ..catalog_context import build_catalog_context
 from ..models import ReadingProgress
 from ._common import (
@@ -31,6 +32,7 @@ class CatalogAPIView(APIView):
         page = ctx['page']
         continue_reading = []
         activity_timestamps = []
+        activity_stats = None
         status_by_book_id = {}
         progress_rows = []
         paid_book_ids: set[int] | None = None
@@ -46,6 +48,7 @@ class CatalogAPIView(APIView):
                 )[:12]
             )
             activity_timestamps = serialize_activity_timestamps(request.user)
+            activity_stats = serialize_activity_stats(request.user)
             book_ids = [item['book'].pk for item in ctx['shelf']]
             for group in ctx['category_lists']:
                 book_ids.extend(item['book'].pk for item in group['items'][:5])
@@ -98,6 +101,7 @@ class CatalogAPIView(APIView):
                 'category_lists': category_lists,
                 'continue_reading': continue_reading,
                 'activity_timestamps': activity_timestamps,
+                'activity_stats': activity_stats,
                 'pagination': {
                     'page': page.number,
                     'num_pages': page.paginator.num_pages,

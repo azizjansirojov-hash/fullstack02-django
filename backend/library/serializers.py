@@ -141,6 +141,16 @@ class ProgressUpsertSerializer(serializers.Serializer):
         requested_status = raw.get('status')
         if requested_status is not None and requested_status not in ReadingProgress.Status.values:
             raise serializers.ValidationError({'status': 'Invalid status.'})
+        minutes_delta = raw.get('minutes_delta', None)
+        if minutes_delta in ('', None):
+            minutes_delta = None
+        else:
+            try:
+                minutes_delta = int(minutes_delta)
+            except (TypeError, ValueError):
+                minutes_delta = None
+            else:
+                minutes_delta = max(0, min(15, minutes_delta))
         return {
             'mode': mode,
             'page': page,
@@ -150,4 +160,5 @@ class ProgressUpsertSerializer(serializers.Serializer):
             'reopen': bool(raw.get('reopen')),
             'clear_audio': bool(raw.get('clear_audio')),
             'status': requested_status,
+            'minutes_delta': minutes_delta,
         }

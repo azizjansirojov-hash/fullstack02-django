@@ -126,6 +126,12 @@ export type CatalogUser = {
 }
 
 /** CatalogAPIView.get */
+export type ActivityStats = {
+  today_minutes_read: number
+  daily_goal_minutes: number
+  goal_progress_percent: number
+}
+
 export type CatalogResponse = {
   query: string
   category: string
@@ -135,6 +141,7 @@ export type CatalogResponse = {
   category_lists: CatalogCategoryGroup[]
   continue_reading: ProgressCard[]
   activity_timestamps: string[]
+  activity_stats: ActivityStats | null
   pagination: CatalogPagination
   user: CatalogUser | null
 }

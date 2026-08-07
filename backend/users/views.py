@@ -17,7 +17,7 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.http import url_has_allowed_host_and_scheme, urlsafe_base64_decode, urlsafe_base64_encode
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -27,6 +27,12 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .auth import clear_jwt_cookies, get_tokens_for_user, set_jwt_cookies
 from .authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
+from .models import (
+    DEFAULT_DAILY_GOAL_MINUTES,
+    MAX_DAILY_GOAL_MINUTES,
+    MIN_DAILY_GOAL_MINUTES,
+    UserPreferences,
+)
 from .serializers import LoginSerializer, RegisterSerializer
 from library.spa_urls import (
     spa_library_home_url,
@@ -364,3 +370,43 @@ class PasswordResetConfirmAPIView(APIView):
                 'redirect_url': reverse('users:login'),
             }
         )
+
+
+class PreferencesAPIView(APIView):
+    """GET/PUT the current user's reading preferences (daily goal)."""
+
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [CSRFEnforcedAuthentication, JWTCookieAuthentication]
+
+    def get(self, request):
+        prefs, _ = UserPreferences.objects.get_or_create(
+            user=request.user,
+            defaults={'daily_goal_minutes': DEFAULT_DAILY_GOAL_MINUTES},
+        )
+        return Response({'daily_goal_minutes': prefs.daily_goal_minutes})
+
+    def put(self, request):
+        raw = request.data.get('daily_goal_minutes', None)
+        try:
+            goal = int(raw)
+        except (TypeError, ValueError):
+            return Response(
+                {'daily_goal_minutes': 'Enter an integer between 5 and 300.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if goal < MIN_DAILY_GOAL_MINUTES or goal > MAX_DAILY_GOAL_MINUTES:
+            return Response(
+                {
+                    'daily_goal_minutes': (
+                        f'Must be between {MIN_DAILY_GOAL_MINUTES} '
+                        f'and {MAX_DAILY_GOAL_MINUTES}.'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        prefs, _ = UserPreferences.objects.update_or_create(
+            user=request.user,
+            defaults={'daily_goal_minutes': goal},
+        )
+        return Response({'daily_goal_minutes': prefs.daily_goal_minutes})
+

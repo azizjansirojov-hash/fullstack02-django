@@ -14,6 +14,7 @@ from .models import (
     Notification,
     Purchase,
     ReadingProgress,
+    ReadingSession,
     Review,
 )
 
@@ -26,6 +27,14 @@ class PurchaseAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at', 'paid_at')
     autocomplete_fields = ('user', 'book')
     actions = ('action_mark_as_paid',)
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('user', 'book')
+            .prefetch_related('book__translations')
+        )
 
     @admin.action(description='Mark selected purchases as paid')
     def action_mark_as_paid(self, request, queryset):
@@ -52,6 +61,14 @@ class NotificationAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at',)
     autocomplete_fields = ('user', 'book')
 
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('user', 'book')
+            .prefetch_related('book__translations')
+        )
+
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
@@ -70,6 +87,14 @@ class ReviewAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
     autocomplete_fields = ('user', 'book')
 
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('user', 'book')
+            .prefetch_related('book__translations')
+        )
+
     @admin.display(description='Text')
     def text_preview(self, obj):
         text = (obj.text or '').strip()
@@ -84,6 +109,26 @@ class ReadingProgressAdmin(admin.ModelAdmin):
     list_filter = ('status', 'mode')
     search_fields = ('user__username', 'book__slug')
     readonly_fields = ('updated_at',)
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('user', 'book')
+            .prefetch_related('book__translations')
+        )
+
+
+@admin.register(ReadingSession)
+class ReadingSessionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'date', 'minutes_read', 'updated_at')
+    list_filter = ('date',)
+    search_fields = ('user__username', 'user__email')
+    readonly_fields = ('updated_at',)
+    autocomplete_fields = ('user',)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user')
 
 
 @admin.register(GenerationJob)
@@ -114,6 +159,14 @@ class GenerationJobAdmin(admin.ModelAdmin):
         'created_at',
         'updated_at',
     )
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related('book')
+            .prefetch_related('book__translations')
+        )
 
     def has_add_permission(self, request):
         return False
