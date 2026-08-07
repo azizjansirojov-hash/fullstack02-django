@@ -92,11 +92,68 @@ class DailyGoalActivityTests(TestCase):
         session = ReadingSession.objects.get(user=self.user, date=timezone.localdate())
         self.assertEqual(session.minutes_read, 5)
 
+        # Legitimate spaced heartbeat (≥50s, ≤IDLE_GAP wall-clock bound).
+        ReadingSession.objects.filter(pk=session.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=15),
+        )
         self.client.put(
             url,
             data={'mode': 'flip', 'page': 2, 'minutes_delta': 15},
             content_type='application/json',
         )
+        session.refresh_from_db()
+        self.assertEqual(session.minutes_read, 20)
+
+    def test_rapid_minutes_delta_does_not_inflate_beyond_wall_clock(self):
+        """Rapid-fire minutes_delta:15 must not stack full 15m chunks."""
+        from library.activity import record_reading_session
+
+        session = record_reading_session(self.user, minutes_delta=15)
+        self.assertEqual(session.minutes_read, 15)
+        for _ in range(10):
+            record_reading_session(self.user, minutes_delta=15)
+        session.refresh_from_db()
+        self.assertEqual(session.minutes_read, 15)
+
+    def test_daily_minutes_ceiling_enforced(self):
+        from library.activity import MAX_DAILY_READING_MINUTES, record_reading_session
+
+        today = timezone.localdate()
+        session = ReadingSession.objects.create(
+            user=self.user,
+            date=today,
+            minutes_read=MAX_DAILY_READING_MINUTES - 10,
+        )
+        ReadingSession.objects.filter(pk=session.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=15),
+        )
+        record_reading_session(self.user, minutes_delta=15)
+        session.refresh_from_db()
+        self.assertEqual(session.minutes_read, MAX_DAILY_READING_MINUTES)
+
+        ReadingSession.objects.filter(pk=session.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=15),
+        )
+        record_reading_session(self.user, minutes_delta=15)
+        session.refresh_from_db()
+        self.assertEqual(session.minutes_read, MAX_DAILY_READING_MINUTES)
+
+    def test_spaced_minutes_delta_still_accumulates(self):
+        from library.activity import record_reading_session
+
+        session = record_reading_session(self.user, minutes_delta=5)
+        self.assertEqual(session.minutes_read, 5)
+        ReadingSession.objects.filter(pk=session.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=5),
+        )
+        # Wall-clock bound: 5 elapsed minutes → at most +5 even if client claims 15.
+        record_reading_session(self.user, minutes_delta=15)
+        session.refresh_from_db()
+        self.assertEqual(session.minutes_read, 10)
+        ReadingSession.objects.filter(pk=session.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=10),
+        )
+        record_reading_session(self.user, minutes_delta=10)
         session.refresh_from_db()
         self.assertEqual(session.minutes_read, 20)
 

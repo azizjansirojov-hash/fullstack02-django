@@ -17,6 +17,10 @@ MAX_MINUTES_DELTA_PER_SAVE = 15
 MAX_PAGES_DELTA_PER_SAVE = 50
 # Ignore gaps longer than this when estimating from wall-clock (new bout).
 IDLE_GAP = timedelta(minutes=20)
+# Hard ceiling per local calendar day (12 hours) — abuse / fat-finger guard.
+MAX_DAILY_READING_MINUTES = 720
+# Reject minute credits closer than this after the last session write.
+MIN_SESSION_INCREMENT_GAP = timedelta(seconds=50)
 
 STREAK_BADGE_MILESTONES = (3, 7, 14, 30)
 FINISHED_MONTH_BADGE_MILESTONES = (1, 3, 5)
@@ -177,10 +181,24 @@ def record_reading_session(
     Prefer an explicit ``minutes_delta`` from the client when present.
     Otherwise estimate from wall-clock since the previous heartbeat
     (session ``updated_at`` or progress ``updated_at``), capped per save.
+    Explicit deltas are also wall-clock-bounded and subject to a minimum
+    gap plus a per-day ceiling so rapid-fire clients cannot inflate stats.
     ``pages_delta`` counts flip/pdf page advances (non-negative).
     """
     now = timezone.now()
     today = timezone.localdate()
+
+    session, created = ReadingSession.objects.get_or_create(
+        user=user,
+        date=today,
+        defaults={'minutes_read': 0, 'pages_read': 0},
+    )
+    # Reload so ceiling uses current minutes_read after concurrent updates.
+    session.refresh_from_db()
+
+    # Fresh row has auto_now updated_at ≈ now — do not gap-throttle the first credit.
+    session_updated_at = None if created else session.updated_at
+    anchor = session_updated_at or previous_heartbeat_at
 
     if minutes_delta is not None:
         try:
@@ -190,14 +208,6 @@ def record_reading_session(
         add_minutes = max(0, min(MAX_MINUTES_DELTA_PER_SAVE, add_minutes))
     else:
         add_minutes = 0
-        anchor = previous_heartbeat_at
-        session_preview = (
-            ReadingSession.objects.filter(user=user, date=today)
-            .values_list('updated_at', flat=True)
-            .first()
-        )
-        if session_preview is not None:
-            anchor = session_preview
         if anchor is not None:
             elapsed = now - anchor
             if timedelta(0) < elapsed <= IDLE_GAP:
@@ -206,17 +216,28 @@ def record_reading_session(
                     max(0, int(elapsed.total_seconds() // 60)),
                 )
 
+    # Gap + wall-clock bound apply after an earlier accepted write today.
+    if add_minutes > 0 and session_updated_at is not None:
+        elapsed = now - session_updated_at
+        if elapsed < MIN_SESSION_INCREMENT_GAP:
+            add_minutes = 0
+        elif timedelta(0) < elapsed <= IDLE_GAP:
+            wall_cap = max(0, int(elapsed.total_seconds() // 60))
+            add_minutes = min(add_minutes, wall_cap, MAX_MINUTES_DELTA_PER_SAVE)
+
+    if add_minutes > 0:
+        remaining = max(0, MAX_DAILY_READING_MINUTES - int(session.minutes_read))
+        add_minutes = min(add_minutes, remaining)
+
     try:
         add_pages = int(pages_delta or 0)
     except (TypeError, ValueError):
         add_pages = 0
     add_pages = max(0, min(MAX_PAGES_DELTA_PER_SAVE, add_pages))
 
-    session, _created = ReadingSession.objects.get_or_create(
-        user=user,
-        date=today,
-        defaults={'minutes_read': 0, 'pages_read': 0},
-    )
+    if add_minutes <= 0 and add_pages <= 0:
+        return session
+
     updates = {'updated_at': now}
     if add_minutes > 0:
         updates['minutes_read'] = F('minutes_read') + add_minutes
