@@ -1,162 +1,99 @@
-# REMEDIATION_REPORT.md — Libro.UZ (11-item pass)
+# REMEDIATION_REPORT.md — Libro.UZ Fixes 1–5
 
-**Date:** 2026-07-30  
-**Scope:** Full remediation per plan; payment gateway explicitly out of scope.
+Branch: `remediation/full-pass-2026-07-30`  
+Date: 2026-08-08
 
----
+Safe incremental remediation: one fix → tests → commit. Public API contracts preserved except additive fields called out below. JWT/CSRF/cookies, payment, TTS providers, and RBAC were not touched.
 
-## Summary
+| Fix | Commit | Summary |
+|-----|--------|---------|
+| 1 | `8b1cda8` | Sanitize book body on save (bleach); confirm reader XSS escapes |
+| 2 | `01f7a51` | Paginate reviews (page size 20) + additive `my_review` |
+| 3 | `4bce406` | Cap `activity_timestamps` to 50 most recent |
+| 4 | `06fec1d` | Require `ENVIRONMENT=staging` for console email when `DEBUG=False` |
+| 5 | `5966572` | Split `api_views` / AppSidebar into submodules |
 
-| Item | Status |
-|------|--------|
-| 1. JWT-only auth | **PASS** |
-| 2. Reader fallback cleanup | **PASS** |
-| 3. Notifications | **PASS** |
-| 4. Review admin | **PASS** |
-| 5. Dead code cleanup | **PASS** |
-| 6. luma → libro naming | **PASS** |
-| 7. Security hardening | **PASS** |
-| 8. Test discovery | **PASS** (169 tests via `manage.py test library users backend`) |
-| 9. Version pins | **PASS** |
-| 10. Dependency locking / audits | **PASS** (with noted npm finding) |
-| 11. JSX → TSX | **PASS** (strict `tsc`; `*.test.ts(x)` excluded from `tsc` include) |
-| Final verification | See below |
+Verification after Fix 5: backend `189` tests OK (1 skipped); frontend `102` tests OK; `tsc --noEmit` clean.
 
 ---
 
-## 1. Auth — JWT-only
+## Fix 1 — XSS defense in depth (reader body)
 
-**Changed:** `backend/users/views.py` (no `django_login`; SPA redirects for HTML routes), `library/auth_access.py` (JWT only), `library/api_views.py` (no `SessionAuthentication`), `library/test_auth_helpers.py`, media/API/verification/purchase/generation tests, deleted `backend/templates/users/*.html`, `e2e/password-reset.spec.ts`, docs (`FOLLOWUP.md`, `MIGRATION_NOTES.md`, README wording).
+**Why:** `BookTranslation.body` was stored unsanitized. The SPA does not use `dangerouslySetInnerHTML`, but defense-in-depth on persist reduces risk if a future renderer is less careful.
 
-**Tested:** `users.tests` + library auth/media/api/verification/purchase/generation modules; password-reset E2E.
+**What:**
+- Added `bleach` and `library/body_sanitize.py` (allowlist tags, no attributes, `strip=True`).
+- `BookTranslation.clean()` and `save()` sanitize `body`.
+- Backend tests cover script/iframe/`on*` stripping and sanitized manifest output.
+- Frontend flip pagination test asserts no executable `<script>` nodes after paginating malicious input.
 
-**Result:** PASS
+**No DOMPurify:** Flip builds HTML only after `escapeHtml`; PDF fallback and listen mode render body as React text nodes. A client sanitizer would be unused noise. Documented here deliberately.
 
----
-
-## 2. Stale reader flags
-
-**Changed:** `frontend/src/lib/readerFlags.ts` (always React), `vite.config.js` (always SPA bypass for reader), `readerOrigin.ts` (removed `DJANGO_READER_ORIGIN` / Django fallback branch), tests, `backend/.env.example`, modal comment.
-
-**Tested:** `cd frontend && npm run test && npm run lint`
-
-**Result:** PASS
+**Key files:** `backend/library/body_sanitize.py`, `backend/library/models.py`, `requirements*.txt`, flip pagination tests.
 
 ---
 
-## 3. Notifications
+## Fix 2 — Review list pagination + `my_review`
 
-**Changed:** `Notification` model + migration, `library/notifications.py`, triggers in `jobs.py` / `Purchase.save`, `/api/notifications/` views+URLs, admin, `library/test_notifications.py`, frontend `api/notifications.ts`, `AppSidebar` badge/list/mark-read + component test.
+**Why:** Unbounded review lists grow with popularity; shelf UI also needed the current user’s review even when it falls off page 1 (`-created_at` order).
 
-**Tested:** `python manage.py test library.test_notifications`; frontend notification test.
+**What:**
+- `ReviewAPIView.get`: page size 20; catalog-shaped `pagination` (`page`, `num_pages`, `has_previous`, `has_next`, `previous_page`, `next_page`).
+- Additive `my_review` when authenticated (serialized own review or `null`).
+- Frontend: `getReviews(slug, page?)`, `useBookReviews` load-more, “Yana yuklash” in ReviewSection.
 
-**Result:** PASS
-
----
-
-## 4. Review admin
-
-**Changed:** `ReviewAdmin` in `backend/library/admin.py` (list_display, search, rating filter, truncated text, delete via admin).
-
-**Tested:** Admin import via full backend suite.
-
-**Result:** PASS
+**Key files:** `backend/library/api/reviews.py` (via Fix 5 move), review hooks/types/tests.
 
 ---
 
-## 5. Dead code
+## Fix 3 — Cap `activity_timestamps`
 
-**Deleted:** bridge parity scripts (`parity_live_b5_c4.py`, `parity_live_final.py`, `parity_c4_*`, `parity_live_b5_focused.py` + orphaned JSON), `book-detail-enhancements.js`, empty `frontend/src/utils/`, Vite template `frontend/README.md`.
+**Why:** Catalog payloads could include an unbounded timestamp list for weekly activity.
 
-**Result:** PASS
+**What:** `serialize_activity_timestamps` returns at most 50 rows, ordered by `-updated_at`. No frontend change (widget only needs recent days).
 
----
-
-## 6. luma → libro
-
-**Changed:** `.env.example` defaults, `DEPLOY.md` + `scripts/rename_postgres_luma_to_libro.sh`, `FOLLOWUP.md`. Legacy browser storage key **string values** in `storageKeys.ts` retained on purpose.
-
-**Result:** PASS  
-**Operator note:** Update local `backend/.env` Postgres names manually; run rename script before flipping live volumes.
+**Key files:** shared serializer helper (`library/api/_common.py` after Fix 5).
 
 ---
 
-## 7. Security hardening
+## Fix 4 — Console email guard
 
-**Changed:** Redis `requirepass` + `REDIS_PASSWORD` / `REDIS_URL` in compose + `.env.example`; `web` ports `127.0.0.1:8000:8000`; `ALLOW_CONSOLE_EMAIL` warnings; console-email guard tests in `backend/test_settings_guards.py`.
+**Why:** `DEBUG=False` with a console/locmem email backend is unsafe in true production; staging smoke tests still need an explicit escape hatch.
 
-**Tested:** settings guard tests in full suite.
+**What:** When `DEBUG=False` and backend is console/locmem, require both `ALLOW_CONSOLE_EMAIL=1` **and** `ENVIRONMENT=staging`. Compose/`.env.example` and settings guard tests updated.
 
-**Result:** PASS
-
----
-
-## 8. Test discovery
-
-**Changed:** Renamed `*_tests.py` → `test_*.py`; CI + `TEST_BASELINE.md` use `python manage.py test library users backend`.
-
-**Counts:** Previously bare app labels missed modules (explicit list ~147). After rename: **Found 169 test(s), OK (skipped=1)**.
-
-**Result:** PASS
+**Key files:** `backend/backend/settings.py`, compose env wiring, `test_settings_guards.py` / verification tests.
 
 ---
 
-## 9. Version pinning
+## Fix 5 — Module split (`api_views` + AppSidebar)
 
-**Added:** root + `frontend/.nvmrc` (`22`), `.python-version` (`3.12`), `engines.node: ">=22 <23"` on both package.json files.
+**Why:** `api_views.py` and `AppSidebar.tsx` were large single modules; conservative split improves navigation without changing routes or UI behavior.
 
-**Result:** PASS
+**What:**
+- Implementations live under `backend/library/api/` (`_common`, `catalog`, `books`, `progress`, `reviews`).
+- `api_views.py` is a thin re-export shim (`api_urls` and existing imports keep working).
+- Frontend: `sidebarIcons.tsx`, `SidebarNotifications.tsx`; `AppSidebar.tsx` composes them.
+- Test mock path for IntegrityError race updated to `library.api.reviews.Review`.
 
----
+**Naming note:** The plan proposed `library/views/`, but that package name **shadows** existing `library/views.py` (SPA redirects). The package is therefore `library/api/`.
 
-## 10. Dependency locking / audits
-
-**Changed:** `requirements.lock.txt` (pip-compile + hashes); Dockerfile + CI install from lockfile; `Pillow` raised to `>=12.3.0,<13.0` to clear advisories.
-
-**Audits:**
-- `pip-audit -r requirements.lock.txt` → **No known vulnerabilities found**
-- Root `npm audit --omit=dev` → **0 vulnerabilities**
-- Frontend `npm audit` → **2 high** in `react-router` / `react-router-dom` (GHSA-qwww-vcr4-c8h2, versions 7.12–8.2). Current app uses `react-router-dom@^7.18.1`. Fix via `npm audit fix --force` would **downgrade** to 7.11.0 (breaking relative to current minor) or require a major jump past 8.2 when available. **Not applied** (breaking); tracked here for follow-up.
-
-**New tooling deps:** `pip-tools` / `pip-audit` used locally for compile/audit (not runtime image deps).
-
-**Result:** PASS (with documented npm high finding)
+**Skipped (models / admin):** `models.py` and `admin.py` were not split — high risk to Django app registry, migrations, and import cycles. Out of scope for this pass.
 
 ---
 
-## 11. JSX → TSX
+## Out of scope (untouched)
 
-**Changed:** All former `frontend/src/**/*.jsx` / app `.js` → `.tsx`/`.ts`; `index.html` → `main.tsx`; Vitest setup → `setup.ts`. Strict `tsconfig` restored.
-
-**Note:** `tsconfig.json` **excludes** `src/**/*.test.ts(x)` from `tsc` (Vitest still type-checks via runtime). App source is under `strict` + `noUncheckedIndexedAccess`.
-
-**Tested:** `npm run typecheck` (0), `npm run test` (88), `npm run lint` (0, warnings only).
-
-**Result:** PASS
-
----
-
-## Final verification
-
-| Check | Result |
-|-------|--------|
-| `python manage.py test library users backend` | **169 OK** (1 skipped) |
-| `cd frontend && npm run test` | **88 OK** |
-| `npm run lint` | **exit 0** (warnings) |
-| `npm run typecheck` | **exit 0** (strict; test files excluded from `tsc`) |
-| Playwright E2E (`CI=true npm run test:e2e`) | **12 passed** |
-
-Note: Local E2E should use a free `:8000` (or `CI=true` so Playwright does not reuse a half-dead server). `reuseExistingServer` without `CI` previously caused false `ECONNREFUSED` failures when Vite outlived Django.
+- JWT / CSRF / cookie auth settings
+- Payment flows
+- TTS providers and generation pipelines
+- RBAC / staff permissions redesign
+- Splitting `models.py` / `admin.py`
+- Adding DOMPurify
 
 ---
 
-## Out of scope (intentional)
+## Follow-ups (optional, not done here)
 
-- Payment gateway / user checkout (admin-managed `Purchase` unchanged beyond notification on paid).
-
-## Remaining follow-ups (honest)
-
-1. Upgrade `react-router-dom` when a non-breaking patched release exists for GHSA-qwww-vcr4-c8h2 (or schedule Router v8 migration).
-2. Optionally include Vitest files in a separate `tsconfig.tests.json` for strict test typing.
-3. Operators must set `REDIS_PASSWORD` and `POSTGRES_*=libro` in real `.env` files (gitignored).
-4. Prefer Node 22 / Python 3.12 locally to match CI (pins added; machine may still use newer runtimes).
+- Further file-size reduction for `models.py` / `admin.py` only with a dedicated migration-safe plan.
+- If a future reader path introduces HTML injection, revisit client-side sanitization then — not before.
