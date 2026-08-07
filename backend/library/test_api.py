@@ -99,6 +99,50 @@ class LibraryAPITests(TestCase):
         self.assertEqual(len(stamps), 1)
         self.assertTrue(stamps[0])
 
+    def test_catalog_activity_timestamps_capped_at_50_most_recent(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .api_views import ACTIVITY_TIMESTAMPS_LIMIT
+
+        self._login()
+        base = timezone.now()
+        books = []
+        for i in range(ACTIVITY_TIMESTAMPS_LIMIT + 5):
+            book = Book.objects.create(
+                author_name=f'Author {i}',
+                slug=f'activity-cap-{i}',
+                is_published=True,
+                rights_status=Book.RightsStatus.PUBLIC_DOMAIN,
+                pdf_generation_status='ready',
+                audio_generation_status='ready',
+            )
+            BookTranslation.objects.create(
+                book=book,
+                language=BookTranslation.Language.UZ,
+                title=f'Title {i}',
+                body='Matn.',
+            )
+            books.append(book)
+            row = ReadingProgress.objects.create(
+                user=self.user,
+                book=book,
+                status=ReadingProgress.Status.READING,
+                page=1,
+            )
+            ReadingProgress.objects.filter(pk=row.pk).update(
+                updated_at=base - timedelta(minutes=i)
+            )
+
+        stamps = self.client.get(reverse('library_api:catalog')).json()[
+            'activity_timestamps'
+        ]
+        self.assertEqual(len(stamps), ACTIVITY_TIMESTAMPS_LIMIT)
+        # Most recent first (i=0 is newest).
+        parsed = [s for s in stamps]
+        self.assertEqual(parsed, sorted(parsed, reverse=True))
+
     def test_catalog_empty_when_unpublished(self):
         Book.objects.update(is_published=False)
         response = self.client.get(reverse('library_api:catalog'))

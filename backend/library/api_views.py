@@ -18,15 +18,20 @@ from .models import Book, ReadingProgress, Review
 from .serializers import ProgressUpsertSerializer, ReviewSerializer, ReviewWriteSerializer
 
 REVIEW_PAGE_SIZE = 20
+ACTIVITY_TIMESTAMPS_LIMIT = 50
 
 
 def serialize_activity_timestamps(user):
-    """ISO timestamps of reading activity (excludes planned-only wishlist rows)."""
+    """ISO timestamps of reading activity (excludes planned-only wishlist rows).
+
+    Capped to the 50 most recent progress updates for catalog payload size.
+    """
     return [
         ts.isoformat()
         for ts in ReadingProgress.objects.filter(user=user)
         .exclude(status=ReadingProgress.Status.PLANNED)
-        .values_list('updated_at', flat=True)
+        .order_by('-updated_at')
+        .values_list('updated_at', flat=True)[:ACTIVITY_TIMESTAMPS_LIMIT]
     ]
 
 
