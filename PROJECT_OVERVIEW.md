@@ -510,7 +510,7 @@ npm run test:e2e
 | **`SQLITE_LOCK_FIX_REPORT.md`** | Appeared in earlier git status as untracked; **not found** on disk at audit time — SQLite lock mitigations are instead documented in `settings.py` comments (~111–117) |
 | **Legacy Django static CSS/JS** | See **Resolved in this pass** — orphan `library.css` removed; users CSS/JS kept for legal `base.html` |
 | **flipPagination comment** | `ReadingProgressPageHint` typed with “Phase 3” wording (`flipPagination.ts` ~30) though Phase 3 checklist in `MIGRATION_NOTES.md` is marked complete — stale comment only |
-| **Migration numbering gap** | No `0020_*` between 0019 and 0021 |
+| **Migration numbering gap** | See **Resolved in this pass** — graph `0019` → `0021` verified; documented intentional |
 
 ### Placeholder UI (not incomplete features)
 
@@ -570,6 +570,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **Missing DEPLOY.md / FOLLOWUP.md** | Restored `DEPLOY.md` (env, TLS, migrate, Redis, SMTP, backups, rollback) and `FOLLOWUP.md` (deferred work, payment left open/out of scope). |
 | **Dependency CVEs non-blocking** | CI `dependency-audit` job fails PRs on pip HIGH/CRITICAL (`scripts/ci_pip_audit_high.py`) and `npm audit --audit-level=high`; weekly workflow remains advisory. Trivial `nanoid` patch via `npm audit fix`. |
 | **Duplicated Django/React library CSS** | Deleted unused `backend/static/library/css/library.css`; `MIGRATION_NOTES.md` documents remaining legal-page static only. |
+| **Migration numbering gap 0019→0021** | `makemigrations --check` / `migrate --plan` clean; docstring on `0021_readingsession` states the missing `0020` is intentional. |
 
 ### Positive controls
 
