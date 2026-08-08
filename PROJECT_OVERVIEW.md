@@ -506,7 +506,7 @@ npm run test:e2e
 |------|----------|
 | **No online payment / checkout** | Purchases only via admin `PurchaseAdmin.action_mark_as_paid` (`library/admin.py` ~39–53) |
 | **TTS providers beyond edge** | `.env.example` notes only `edge`; `TTS_PROVIDER` abstraction exists but no Azure/Google impl |
-| **Referenced docs missing on disk** | `README.md` links to `DEPLOY.md` and `FOLLOWUP.md` — **deleted / not present** in current tree (git status shows deletions). Operator deploy checklist lives partly in README + `.env.example` comments |
+| **Referenced docs missing on disk** | See **Resolved in this pass** — `DEPLOY.md` / `FOLLOWUP.md` restored |
 | **`SQLITE_LOCK_FIX_REPORT.md`** | Appeared in earlier git status as untracked; **not found** on disk at audit time — SQLite lock mitigations are instead documented in `settings.py` comments (~111–117) |
 | **Legacy Django static CSS/JS** | `backend/static/library/css`, `users/js` still present alongside React ports — migration notes say SPA owns UI; risk of drift |
 | **flipPagination comment** | `ReadingProgressPageHint` typed with “Phase 3” wording (`flipPagination.ts` ~30) though Phase 3 checklist in `MIGRATION_NOTES.md` is marked complete — stale comment only |
@@ -567,6 +567,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 |---------|-----|
 | **edge-tts unofficial / ToS risk** (mitigation, not second provider) | Provider retry/backoff in `tts_providers/edge.py`; book stays `generating` during job retries and becomes `failed` only on terminal `GenerationJob` failure (`jobs.py`); unknown `TTS_PROVIDER` → `NotImplementedError`; documented in `ARCHITECTURE.md` (TTS Provider Risk). |
 | **Self-signed TLS material in repo** | Removed working-tree `deploy/certs/selfsigned.*` (never in git history); gitignore `deploy/certs/*.crt|*.key`; generate via `deploy/generate_selfsigned_cert.sh`. |
+| **Missing DEPLOY.md / FOLLOWUP.md** | Restored `DEPLOY.md` (env, TLS, migrate, Redis, SMTP, backups, rollback) and `FOLLOWUP.md` (deferred work, payment left open/out of scope). |
 
 ### Positive controls
 
@@ -597,7 +598,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **Public catalog metadata** | Anonymous catalog may show `has_pdf`/`has_audio` | By design; URLs withheld without access |
 | **Dependency CVEs** | Audit workflow non-blocking | Run audits before release |
 | **Local `.env` files** | gitignored (`backend/.env`) | Ensure never committed; tree may contain local env files on developer machines |
-| **README still points to deleted DEPLOY.md** | `README.md` ~117 | Ops gap — production checklist may be incomplete in-repo |
+| **README still points to deleted DEPLOY.md** | See **Resolved in this pass** | Ops gap closed |
 
 ### XSS testing assets
 
@@ -785,11 +786,11 @@ Also commonly present locally (gitignored / generated): `backend/db.sqlite3`, `b
 | File | Role |
 |------|------|
 | `README.md` | Quick start, E2E, Docker |
-| `ARCHITECTURE.md` | Entitlement + generation diagram |
-| `frontend/MIGRATION_NOTES.md` | Django → React migration checklist (marked complete) |
+| `DEPLOY.md` | Production / Docker checklist (env, TLS, Redis, SMTP, backups, rollback) |
+| `FOLLOWUP.md` | Deferred work (payment remains out of remediation scope) |
+| `ARCHITECTURE.md` | Entitlement + generation + TTS provider risk |
+| `frontend/MIGRATION_NOTES.md` | Django → React migration checklist |
 | `backend/.env.example` | Env template + warnings |
-
-Missing (referenced but not in tree): `DEPLOY.md`, `FOLLOWUP.md`.
 
 ---
 
