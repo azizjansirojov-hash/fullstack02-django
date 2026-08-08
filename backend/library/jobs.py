@@ -117,13 +117,16 @@ def enqueue_generation_job(
                     record_regenerate_quota(user)
             return active
 
+        # Nested atomic = savepoint so IntegrityError from the partial unique
+        # index does not poison the outer transaction (Postgres).
         try:
-            job = GenerationJob.objects.create(
-                book_id=book_id,
-                job_type=job_type,
-                force=force,
-                status=GenerationJob.Status.QUEUED,
-            )
+            with transaction.atomic():
+                job = GenerationJob.objects.create(
+                    book_id=book_id,
+                    job_type=job_type,
+                    force=force,
+                    status=GenerationJob.Status.QUEUED,
+                )
         except IntegrityError:
             job = _active_jobs_qs(book_id, job_type).order_by('pk').first()
             if job is None:
@@ -279,9 +282,14 @@ def run_job(job: GenerationJob) -> None:
 
         failed_parts = [k for k, v in result.items() if v == 'failed']
         if failed_parts:
+            tts_hint = ''
+            if 'audio' in failed_parts:
+                tts_hint = (
+                    f' tts_provider={getattr(settings, "TTS_PROVIDER", "edge")}'
+                )
             raise RuntimeError(
                 f'Generation failed for: {", ".join(failed_parts)} '
-                f'(statuses={result})'
+                f'(statuses={result}){tts_hint}'
             )
 
         job.status = GenerationJob.Status.DONE
@@ -312,6 +320,27 @@ def run_job(job: GenerationJob) -> None:
         job.locked_by = ''
         if job.attempts >= job.max_attempts:
             job.status = GenerationJob.Status.FAILED
+            # Terminal job failure: set audio_generation_status=failed cleanly.
+            # tts_service keeps "generating" during job-level retries so the
+            # book is not stuck failed while attempts remain.
+            if job.job_type in (
+                GenerationJob.JobType.AUDIO,
+                GenerationJob.JobType.ALL,
+            ):
+                from .generation_utils import (
+                    GENERATION_FAILED,
+                    GENERATION_READY,
+                )
+
+                book.refresh_from_db(fields=['audio_generation_status'])
+                if book.audio_generation_status != GENERATION_READY:
+                    book.audio_generation_status = GENERATION_FAILED
+                    book.save(
+                        update_fields=[
+                            'audio_generation_status',
+                            'updated_at',
+                        ]
+                    )
             logger.error(
                 'GenerationJob terminal failure: %s',
                 exc,

@@ -24,7 +24,8 @@ def get_tts_provider():
         from .edge import EdgeTTSProvider
 
         return EdgeTTSProvider()
-    raise ValueError(
-        f'Unknown TTS_PROVIDER={provider_id!r}. '
-        'Implemented: edge. Add a module under library.tts_providers to extend.'
+    raise NotImplementedError(
+        f'TTS_PROVIDER={provider_id!r} is not implemented. '
+        'Only "edge" (edge-tts) is supported today. '
+        'Add a provider module under library/tts_providers/ and wire it here.'
     )

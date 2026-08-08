@@ -101,6 +101,109 @@ class GenerationHealthTests(TestCase):
         self.assertIn('stale_running', data)
         self.assertIn('stale_running_after_seconds', data)
 
+    def test_failed_recent_surfaced_in_health_payload(self):
+        job = GenerationJob.objects.create(
+            book=self.book,
+            job_type=GenerationJob.JobType.AUDIO,
+            status=GenerationJob.Status.FAILED,
+            error_message='edge-tts timed out',
+        )
+        payload = generation_health_payload()
+        self.assertGreaterEqual(payload['failed_recent_24h'], 1)
+        self.assertIsNotNone(payload['last_failed'])
+        self.assertEqual(payload['last_failed']['job_id'], job.pk)
+        self.assertIn('edge-tts', payload['last_failed']['error_message'])
+
+
+class TtsProviderConfigTests(TestCase):
+    @override_settings(TTS_PROVIDER='azure-fantasy')
+    def test_unknown_provider_raises_not_implemented(self):
+        from library.tts_providers import get_tts_provider
+
+        with self.assertRaises(NotImplementedError) as ctx:
+            get_tts_provider()
+        msg = str(ctx.exception)
+        self.assertIn('tts_providers', msg)
+        self.assertIn('azure-fantasy', msg)
+
+
+class EdgeTtsRetryTests(TestCase):
+    @patch('library.tts_providers.edge.time.sleep', return_value=None)
+    @patch('library.tts_providers.edge._run_async')
+    def test_synthesize_retries_then_succeeds(self, mock_run, _sleep):
+        from library.tts_providers.edge import EdgeTTSProvider
+
+        mock_run.side_effect = [
+            RuntimeError('edge-tts timed out after 120 s'),
+            b'ID3fake-mp3',
+        ]
+        out = EdgeTTSProvider().synthesize('Salom.', voice='uz-UZ-MadinaNeural')
+        self.assertEqual(out, b'ID3fake-mp3')
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch('library.tts_providers.edge.time.sleep', return_value=None)
+    @patch('library.tts_providers.edge._run_async')
+    def test_synthesize_exhausts_retries(self, mock_run, _sleep):
+        from library.tts_providers.edge import EdgeTTSProvider
+
+        mock_run.side_effect = RuntimeError('edge-tts timed out after 120 s')
+        with self.assertRaises(RuntimeError):
+            EdgeTTSProvider().synthesize('Salom.', voice='uz-UZ-MadinaNeural')
+        self.assertEqual(mock_run.call_count, 3)
+
+
+class TtsJobFailureStatusTests(TestCase):
+    def setUp(self):
+        self.book = Book.objects.create(
+            author_name='TTS',
+            slug='tts-fail-book',
+            rights_status=Book.RightsStatus.LICENSED,
+            audio_generation_status='pending',
+        )
+        BookTranslation.objects.create(
+            book=self.book,
+            language=BookTranslation.Language.UZ,
+            title='TTS',
+            body='Birinchi jumla.',
+        )
+
+    @patch('library.jobs.ensure_book_audio', return_value='failed')
+    def test_retry_keeps_book_generating_until_terminal(self, _audio):
+        from library.generation_utils import GENERATION_FAILED, GENERATION_GENERATING
+
+        self.book.audio_generation_status = GENERATION_GENERATING
+        self.book.save(update_fields=['audio_generation_status'])
+
+        job = GenerationJob.objects.create(
+            book=self.book,
+            job_type=GenerationJob.JobType.AUDIO,
+            status=GenerationJob.Status.QUEUED,
+            max_attempts=3,
+            attempts=0,
+        )
+        # First claim: attempts=1 < max → requeue; book stays generating.
+        claimed = claim_next_job()
+        self.assertEqual(claimed.pk, job.pk)
+        run_job(claimed)
+        claimed.refresh_from_db()
+        self.book.refresh_from_db()
+        self.assertEqual(claimed.status, GenerationJob.Status.QUEUED)
+        self.assertEqual(self.book.audio_generation_status, GENERATION_GENERATING)
+
+        # Burn remaining attempts to terminal failure.
+        for _ in range(2):
+            claimed = claim_next_job()
+            self.assertIsNotNone(claimed)
+            run_job(claimed)
+
+        claimed.refresh_from_db()
+        self.book.refresh_from_db()
+        self.assertEqual(claimed.status, GenerationJob.Status.FAILED)
+        self.assertEqual(self.book.audio_generation_status, GENERATION_FAILED)
+        payload = generation_health_payload()
+        self.assertGreaterEqual(payload['failed_recent_24h'], 1)
+        self.assertEqual(payload['last_failed']['job_id'], claimed.pk)
+
 
 class GenerationRightsAndQuotaTests(TestCase):
     def setUp(self):
@@ -235,9 +338,14 @@ class GenerationJobConcurrentEnqueueTests(TransactionTestCase):
         barrier = threading.Barrier(2)
 
         def worker():
-            barrier.wait(timeout=5)
-            job = enqueue_generation_job(book.pk)
-            results.append(job.pk if job else None)
+            from django.db import connection
+
+            try:
+                barrier.wait(timeout=5)
+                job = enqueue_generation_job(book.pk)
+                results.append(job.pk if job else None)
+            finally:
+                connection.close()
 
         threads = [threading.Thread(target=worker) for _ in range(2)]
         for t in threads:

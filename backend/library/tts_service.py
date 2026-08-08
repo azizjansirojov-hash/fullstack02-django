@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from .generation_utils import (
     GENERATION_FAILED,
+    GENERATION_GENERATING,
     GENERATION_LEGACY,
     GENERATION_PENDING,
     GENERATION_READY,
@@ -143,7 +144,7 @@ def ensure_book_audio(book, *, force: bool = False) -> str:
     ):
         return GENERATION_READY
 
-    book.audio_generation_status = 'generating'
+    book.audio_generation_status = GENERATION_GENERATING
     book.save(update_fields=['audio_generation_status', 'updated_at'])
 
     paragraphs = split_body_paragraphs(translation.body)
@@ -202,8 +203,22 @@ def ensure_book_audio(book, *, force: bool = False) -> str:
                 ]
             )
         return GENERATION_READY
-    except Exception:
-        logger.exception('TTS generation failed for book pk=%s', book.pk)
-        book.audio_generation_status = GENERATION_FAILED
-        book.save(update_fields=['audio_generation_status', 'updated_at'])
+    except Exception as exc:
+        # Keep audio_generation_status=generating while the job layer may retry.
+        # jobs.run_job sets failed only when the GenerationJob is terminal.
+        # Permanent refusals (e.g. MAX_TTS_CHARS) already return failed above.
+        logger.exception(
+            'TTS generation failed for book pk=%s provider=%s: %s',
+            book.pk,
+            provider.name,
+            exc,
+            extra={
+                'book_id': book.pk,
+                'job_id': '-',
+                'tts_provider': provider.name,
+            },
+        )
+        if book.audio_generation_status != GENERATION_GENERATING:
+            book.audio_generation_status = GENERATION_GENERATING
+            book.save(update_fields=['audio_generation_status', 'updated_at'])
         return GENERATION_FAILED
