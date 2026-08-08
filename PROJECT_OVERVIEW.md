@@ -566,6 +566,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | Finding | Fix |
 |---------|-----|
 | **edge-tts unofficial / ToS risk** (mitigation, not second provider) | Provider retry/backoff in `tts_providers/edge.py`; book stays `generating` during job retries and becomes `failed` only on terminal `GenerationJob` failure (`jobs.py`); unknown `TTS_PROVIDER` → `NotImplementedError`; documented in `ARCHITECTURE.md` (TTS Provider Risk). |
+| **Self-signed TLS material in repo** | Removed working-tree `deploy/certs/selfsigned.*` (never in git history); gitignore `deploy/certs/*.crt|*.key`; generate via `deploy/generate_selfsigned_cert.sh`. |
 
 ### Positive controls
 
@@ -585,7 +586,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 |---------|----------|------------------------|
 | **No payment API — admin grants access** | `library/admin.py` Purchase actions | Operational: staff compromise = free content |
 | **edge-tts unofficial / ToS risk** | See **Resolved in this pass** — mitigated with retries + docs; second provider still deferred | Continuity / legal for production |
-| **Self-signed TLS material in repo** | `deploy/certs/selfsigned.crt`, `selfsigned.key` | OK for local; ensure never used as prod identity; keys in tree are a hygiene concern |
+| **Self-signed TLS material in repo** | See **Resolved in this pass** | Was hygiene concern; generate locally only |
 | **CI / Dockerfile placeholder secrets** | `ci.yml` ~31,53; `Dockerfile` ~31 | Acceptable if never used at runtime — confirm Compose overrides |
 | **E2E passwords in source** | `seed_e2e.py`, `e2e/*.ts` | Expected for tests; rotate if reused elsewhere |
 | **`innerHTML` in flip pagination** | `flipPagination.ts` ~129–254 | Mitigated by `escapeHtml` + server bleach; keep both layers if allowing more HTML tags |

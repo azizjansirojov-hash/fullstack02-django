@@ -106,6 +106,13 @@ docker compose --env-file backend/.env up --build
 
 Then open **http://127.0.0.1:8000/library** — you should see the **React** catalog (not the old Django login page as the home experience).
 
+For local HTTPS, generate certs (gitignored — never commit) then use the TLS overlay:
+
+```bash
+bash deploy/generate_selfsigned_cert.sh
+docker compose --env-file backend/.env -f docker-compose.yml -f deploy/docker-compose.tls.yml up --build
+```
+
 Compose runs:
 
 - `web` — Gunicorn (SPA + APIs + reader)
