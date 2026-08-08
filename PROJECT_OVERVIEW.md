@@ -504,13 +504,10 @@ npm run test:e2e
 
 | Item | Evidence |
 |------|----------|
-| **No online payment / checkout** | Purchases only via admin `PurchaseAdmin.action_mark_as_paid` (`library/admin.py` ~39–53) |
-| **TTS providers beyond edge** | `.env.example` notes only `edge`; `TTS_PROVIDER` abstraction exists but no Azure/Google impl |
-| **Referenced docs missing on disk** | See **Resolved in this pass** — `DEPLOY.md` / `FOLLOWUP.md` restored |
-| **`SQLITE_LOCK_FIX_REPORT.md`** | Appeared in earlier git status as untracked; **not found** on disk at audit time — SQLite lock mitigations are instead documented in `settings.py` comments (~111–117) |
-| **Legacy Django static CSS/JS** | See **Resolved in this pass** — orphan `library.css` removed; users CSS/JS kept for legal `base.html` |
-| **flipPagination comment** | `ReadingProgressPageHint` typed with “Phase 3” wording (`flipPagination.ts` ~30) though Phase 3 checklist in `MIGRATION_NOTES.md` is marked complete — stale comment only |
-| **Migration numbering gap** | See **Resolved in this pass** — graph `0019` → `0021` verified; documented intentional |
+| **No online payment / checkout (STILL OPEN)** | Purchases only via admin `PurchaseAdmin.action_mark_as_paid` — **out of scope for this remediation pass** |
+| **TTS providers beyond edge** | Abstraction exists; second provider still deferred (`ARCHITECTURE.md`) |
+| **`SQLITE_LOCK_FIX_REPORT.md`** | Not found on disk — SQLite lock mitigations documented in `settings.py` comments |
+| **flipPagination comment** | `ReadingProgressPageHint` “Phase 3” wording may be stale vs complete checklist |
 
 ### Placeholder UI (not incomplete features)
 
@@ -559,7 +556,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 
 ## 11. Security Observations
 
-**Read-only findings — not fixed in this audit.**
+Findings below include items still open after the **risk remediation pass** (2026-08-08). Resolved items are listed first with commit references in `REMEDIATION_LOG.md`.
 
 ### Resolved in this pass
 
@@ -585,24 +582,19 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 - Password validators enabled; disposable email blocklist.
 - E2E throttle relax blocked when `DEBUG=False`.
 
-### Issues / risks (with references)
+### Issues / risks still open
 
-| Finding | Location | Severity (qualitative) |
-|---------|----------|------------------------|
-| **No payment API — admin grants access** | `library/admin.py` Purchase actions | Operational: staff compromise = free content |
-| **edge-tts unofficial / ToS risk** | See **Resolved in this pass** — mitigated with retries + docs; second provider still deferred | Continuity / legal for production |
-| **Self-signed TLS material in repo** | See **Resolved in this pass** | Was hygiene concern; generate locally only |
-| **CI / Dockerfile placeholder secrets** | `ci.yml` ~31,53; `Dockerfile` ~31 | Acceptable if never used at runtime — confirm Compose overrides |
-| **E2E passwords in source** | `seed_e2e.py`, `e2e/*.ts` | Expected for tests; rotate if reused elsewhere |
-| **`innerHTML` in flip pagination** | `flipPagination.ts` ~129–254 | Mitigated by `escapeHtml` + server bleach; keep both layers if allowing more HTML tags |
-| **Review text** | Stored as plain text; rendered in React text nodes (typical) — confirm no `dangerouslySetInnerHTML` on reviews (none found in FE for reviews) |
-| **No CORS middleware** | No `django-cors-headers` | Safe for same-origin; if a separate SPA origin is introduced without CSRF/cookie redesign, risk rises |
-| **Admin session vs JWT media** | Different auth stacks | Staff must use admin session; media needs JWT — intentional but easy to confuse |
-| **Compose default `ALLOW_CONSOLE_EMAIL=1`** | See **Resolved in this pass** — default now `0` | |
-| **Public catalog metadata** | Anonymous catalog may show `has_pdf`/`has_audio` | By design; URLs withheld without access |
-| **Dependency CVEs** | See **Resolved in this pass** — PR gate on high+; weekly full scan advisory | |
-| **Local `.env` files** | gitignored (`backend/.env`) | Ensure never committed; tree may contain local env files on developer machines |
-| **README still points to deleted DEPLOY.md** | See **Resolved in this pass** | Ops gap closed |
+| Finding | Location | Severity (qualitative) | Status |
+|---------|----------|------------------------|--------|
+| **No payment API — admin grants access (STILL OPEN)** | `library/admin.py` Purchase actions | Operational: staff compromise = free content | **Out of scope** for this remediation pass — do not implement checkout here |
+| **edge-tts continuity (second provider)** | `tts_providers/` | Continuity | Mitigated with retries; full second provider still deferred |
+| **CI / Dockerfile placeholder secrets** | `ci.yml`; `Dockerfile` | Low if overridden | Acceptable if never used at runtime |
+| **E2E passwords in source** | `seed_e2e.py`, `e2e/*.ts` | Expected for tests | Rotate if reused elsewhere |
+| **`innerHTML` in flip pagination** | `flipPagination.ts` | Mitigated by escape + bleach | Keep both layers |
+| **No CORS middleware** | settings | Safe for same-origin | Revisit if separate SPA origin |
+| **Admin session vs JWT media** | auth stacks | Intentional | Document for staff |
+| **Public catalog metadata** | anonymous catalog | By design | URLs withheld without access |
+| **Local `.env` files** | gitignored | Hygiene | Ensure never committed |
 
 ### XSS testing assets
 
@@ -800,12 +792,13 @@ Also commonly present locally (gitignored / generated): `backend/db.sqlite3`, `b
 
 ## Appendix B — Suggested next work for a successor AI
 
-1. Restore or rewrite production deploy docs (TLS, SMTP, backups) replacing deleted `DEPLOY.md`.
-2. Implement a real checkout/payment path or document the admin-only commerce model as permanent.
-3. Add a second TTS provider behind `TTS_PROVIDER` before relying on edge-tts in production.
-4. Keep dual CSS trees in sync or delete unused Django static CSS after confirming Docker SPA path.
-5. Run and act on `pip-audit` / `npm audit` (workflow is advisory only today).
-6. Treat `deploy/certs/*` as local-only; rotate if ever exposed.
+1. **STILL OPEN / out of remediation scope:** Implement a real checkout/payment path **or** permanently document admin-only commerce (`Purchase` marked paid in admin).
+2. Add a second TTS provider behind `TTS_PROVIDER` before treating edge-tts as a production SLA.
+3. Act on any future high/critical audit findings from CI; review weekly advisory workflow for low/medium debt.
+4. Optional: further slim Django legal-page static if templates are rewritten into the SPA.
+5. Custom reader/publisher roles (product decision).
+
+Completed in the risk remediation pass (see `REMEDIATION_LOG.md`): deploy docs, cert hygiene, dual CSS cleanup, migration gap note, console-email Compose default, PR dependency gates, edge-tts retries.
 
 ---
 
