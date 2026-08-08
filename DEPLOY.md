@@ -22,8 +22,8 @@ docker compose --env-file backend/.env up --build
 
 Open **http://127.0.0.1:8000/library** — React SPA.
 
-Local Compose smoke tests may set `USE_TLS=0` and explicitly `ALLOW_CONSOLE_EMAIL=1` with `ENVIRONMENT=staging`.
-**Production:** set `ALLOW_CONSOLE_EMAIL=0` (or omit) and configure SMTP. Never enable console email in production. Django refuses to boot with a console email backend when `DEBUG=False` unless `ALLOW_CONSOLE_EMAIL=1` **and** `ENVIRONMENT=staging`.
+Local Compose smoke tests may set `USE_TLS=0` and must **explicitly** set `ALLOW_CONSOLE_EMAIL=1` with `ENVIRONMENT=staging` in `backend/.env` (Compose defaults `ALLOW_CONSOLE_EMAIL` to **0**).
+**Production:** leave `ALLOW_CONSOLE_EMAIL` unset/`0` and configure SMTP. Never enable console email in production. Django refuses to boot with a console email backend when `DEBUG=False` unless `ALLOW_CONSOLE_EMAIL=1` **and** `ENVIRONMENT=staging`.
 
 ### Host port binding
 

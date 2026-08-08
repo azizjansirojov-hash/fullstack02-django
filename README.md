@@ -100,7 +100,8 @@ CI runs the same suite as a **separate** required job (`e2e`) so Vitest/Django u
 ```bash
 cp backend/.env.example backend/.env
 # Required: strong SECRET_KEY (not the change-me placeholder) and POSTGRES_PASSWORD
-# Local Compose uses USE_TLS=0 + ALLOW_CONSOLE_EMAIL=1 for HTTP smoke tests.
+# Local Compose HTTP smoke: set ALLOW_CONSOLE_EMAIL=1 and ENVIRONMENT=staging in backend/.env
+# (Compose defaults ALLOW_CONSOLE_EMAIL to 0 — never enable in production).
 docker compose --env-file backend/.env up --build
 ```
 

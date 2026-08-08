@@ -571,6 +571,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **Dependency CVEs non-blocking** | CI `dependency-audit` job fails PRs on pip HIGH/CRITICAL (`scripts/ci_pip_audit_high.py`) and `npm audit --audit-level=high`; weekly workflow remains advisory. Trivial `nanoid` patch via `npm audit fix`. |
 | **Duplicated Django/React library CSS** | Deleted unused `backend/static/library/css/library.css`; `MIGRATION_NOTES.md` documents remaining legal-page static only. |
 | **Migration numbering gap 0019→0021** | `makemigrations --check` / `migrate --plan` clean; docstring on `0021_readingsession` states the missing `0020` is intentional. |
+| **Compose default `ALLOW_CONSOLE_EMAIL=1`** | Compose default is now `0`; local smoke must opt in via `.env`; warnings in compose + `.env.example`. |
 
 ### Positive controls
 
@@ -597,7 +598,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **Review text** | Stored as plain text; rendered in React text nodes (typical) — confirm no `dangerouslySetInnerHTML` on reviews (none found in FE for reviews) |
 | **No CORS middleware** | No `django-cors-headers` | Safe for same-origin; if a separate SPA origin is introduced without CSRF/cookie redesign, risk rises |
 | **Admin session vs JWT media** | Different auth stacks | Staff must use admin session; media needs JWT — intentional but easy to confuse |
-| **Compose default `ALLOW_CONSOLE_EMAIL=1`** | `docker-compose.yml` ~14 | Documented as local/smoke only — dangerous if copied to prod |
+| **Compose default `ALLOW_CONSOLE_EMAIL=1`** | See **Resolved in this pass** — default now `0` | |
 | **Public catalog metadata** | Anonymous catalog may show `has_pdf`/`has_audio` | By design; URLs withheld without access |
 | **Dependency CVEs** | See **Resolved in this pass** — PR gate on high+; weekly full scan advisory | |
 | **Local `.env` files** | gitignored (`backend/.env`) | Ensure never committed; tree may contain local env files on developer machines |

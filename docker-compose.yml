@@ -1,17 +1,17 @@
 # Use: docker compose --env-file backend/.env up --build
 # Requires SECRET_KEY, POSTGRES_*, and REDIS_PASSWORD in the compose --env-file (no weak defaults).
 #
-# WARNING: ALLOW_CONSOLE_EMAIL defaults to 1 for local Compose smoke tests.
-# LOCAL/SMOKE TESTING ONLY — must not be set in production.
-# With DEBUG=False, Django also requires ENVIRONMENT=staging for console email.
-# Production: ALLOW_CONSOLE_EMAIL=0, ENVIRONMENT=production (or omit), real SMTP.
+# WARNING: ALLOW_CONSOLE_EMAIL must NEVER be enabled in production.
+# Compose defaults to 0. For local/staging smoke with DEBUG=False + console email,
+# set ALLOW_CONSOLE_EMAIL=1 and ENVIRONMENT=staging explicitly in backend/.env.
+# Django still requires ENVIRONMENT=staging when DEBUG=False and console email is on.
 
 x-app-environment: &app-environment
   SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in the compose --env-file}
   DEBUG: "False"
   USE_TLS: "0"
-  # LOCAL/SMOKE TESTING ONLY — must not be set in production.
-  ALLOW_CONSOLE_EMAIL: ${ALLOW_CONSOLE_EMAIL:-1}
+  # NEVER enable in production. Default 0 — opt in via .env for local/staging smoke only.
+  ALLOW_CONSOLE_EMAIL: ${ALLOW_CONSOLE_EMAIL:-0}
   ENVIRONMENT: ${ENVIRONMENT:-staging}
   ALLOWED_HOSTS: localhost,127.0.0.1,web
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
