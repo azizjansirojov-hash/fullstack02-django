@@ -568,6 +568,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **edge-tts unofficial / ToS risk** (mitigation, not second provider) | Provider retry/backoff in `tts_providers/edge.py`; book stays `generating` during job retries and becomes `failed` only on terminal `GenerationJob` failure (`jobs.py`); unknown `TTS_PROVIDER` → `NotImplementedError`; documented in `ARCHITECTURE.md` (TTS Provider Risk). |
 | **Self-signed TLS material in repo** | Removed working-tree `deploy/certs/selfsigned.*` (never in git history); gitignore `deploy/certs/*.crt|*.key`; generate via `deploy/generate_selfsigned_cert.sh`. |
 | **Missing DEPLOY.md / FOLLOWUP.md** | Restored `DEPLOY.md` (env, TLS, migrate, Redis, SMTP, backups, rollback) and `FOLLOWUP.md` (deferred work, payment left open/out of scope). |
+| **Dependency CVEs non-blocking** | CI `dependency-audit` job fails PRs on pip HIGH/CRITICAL (`scripts/ci_pip_audit_high.py`) and `npm audit --audit-level=high`; weekly workflow remains advisory. Trivial `nanoid` patch via `npm audit fix`. |
 
 ### Positive controls
 
@@ -596,7 +597,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **Admin session vs JWT media** | Different auth stacks | Staff must use admin session; media needs JWT — intentional but easy to confuse |
 | **Compose default `ALLOW_CONSOLE_EMAIL=1`** | `docker-compose.yml` ~14 | Documented as local/smoke only — dangerous if copied to prod |
 | **Public catalog metadata** | Anonymous catalog may show `has_pdf`/`has_audio` | By design; URLs withheld without access |
-| **Dependency CVEs** | Audit workflow non-blocking | Run audits before release |
+| **Dependency CVEs** | See **Resolved in this pass** — PR gate on high+; weekly full scan advisory | |
 | **Local `.env` files** | gitignored (`backend/.env`) | Ensure never committed; tree may contain local env files on developer machines |
 | **README still points to deleted DEPLOY.md** | See **Resolved in this pass** | Ops gap closed |
 

@@ -1,0 +1,39 @@
+name: dependency-audit
+
+# Advisory weekly scan (all severities, non-blocking).
+# PR/push HIGH+ enforcement lives in ci.yml → dependency-audit job.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.lock.txt --disable-pip
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+      - name: Audit frontend
+        run: npm audit --prefix frontend
+        continue-on-error: true
+      - name: Audit root
+        run: npm audit
+        continue-on-error: true

@@ -123,3 +123,12 @@ Password-reset emails use `EMAIL_*` from `.env` (console backend prints the link
 
 See [DEPLOY.md](DEPLOY.md) for TLS, SMTP, backups, and production checklist.
 See [FOLLOWUP.md](FOLLOWUP.md) for deferred work and [frontend/MIGRATION_NOTES.md](frontend/MIGRATION_NOTES.md) for SPA migration status.
+
+## Dependency vulnerability policy
+
+| Gate | What runs | Blocks merge? |
+|------|-----------|---------------|
+| **CI on every PR/push** (`ci.yml` → `dependency-audit`) | `scripts/ci_pip_audit_high.py` (pip-audit + OSV HIGH/CRITICAL) and `npm audit --prefix frontend --audit-level=high` | **Yes** — high/critical only |
+| **Weekly advisory** (`dependency-audit.yml`) | Full `pip-audit` + `npm audit` (all severities) | **No** (`continue-on-error`) |
+
+Low/medium findings may appear in the weekly workflow without failing PRs. Fix high/critical before merge; prefer lockfile/patch bumps over broad major upgrades.

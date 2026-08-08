@@ -165,3 +165,12 @@ See [README.md](README.md) for port conflicts and E2E.
 ## Gated media
 
 `/library/media/...` must remain auth-gated (JWT cookie). Never expose book PDF/audio under open `/media/`.
+
+## Dependency vulnerability policy
+
+| Gate | Blocks merge? |
+|------|---------------|
+| CI `dependency-audit` on PR/push: pip HIGH/CRITICAL (`scripts/ci_pip_audit_high.py`) + `npm audit --prefix frontend --audit-level=high` | **Yes** |
+| Weekly `dependency-audit.yml` (all severities) | **No** (advisory) |
+
+See also [README.md](README.md).

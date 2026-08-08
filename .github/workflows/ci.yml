@@ -1,103 +1,120 @@
-name: CI
-
-on:
-  push:
-    branches: [main, master]
-  pull_request:
-
-jobs:
-  frontend-tests:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Install and test
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
-
-  backend-tests:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    env:
-      SECRET_KEY: ci-test-secret-key-not-for-production-use-32chars
-      DEBUG: "True"
-      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
-      ALLOW_CONSOLE_EMAIL: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -r ../requirements.lock.txt
-      - name: Migrate
-        run: python manage.py migrate --noinput
-      - name: Run tests
-        # Django discovers test*.py under each app (renamed from *_tests.py).
-        run: python manage.py test library users backend --verbosity=1
-
-  e2e:
-    name: e2e (Playwright)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      SECRET_KEY: ci-test-secret-key-not-for-production-use-32chars
-      DEBUG: "True"
-      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
-      ALLOW_CONSOLE_EMAIL: "1"
-      CI: "true"
-      VITE_REACT_READER_ENABLED: "true"
-      E2E_RELAX_THROTTLE: "1"
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            frontend/package-lock.json
-
-      - name: Install Python dependencies
-        run: pip install -r requirements.lock.txt
-
-      - name: Install root + frontend npm deps
-        run: |
-          npm ci
-          npm ci --prefix frontend
-
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Migrate and seed E2E fixtures
-        working-directory: backend
-        run: |
-          python manage.py migrate --noinput
-          python manage.py seed_e2e
-
-      - name: Run Playwright E2E
-        run: npx playwright test
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  dependency-audit:
+    name: dependency-audit (high+)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+      - name: pip-audit (HIGH/CRITICAL)
+        run: |
+          pip install pip-audit
+          python scripts/ci_pip_audit_high.py
+      - name: npm audit frontend (high+)
+        run: npm audit --prefix frontend --audit-level=high
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+      - name: Install and test
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SECRET_KEY: ci-test-secret-key-not-for-production-use-32chars
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      ALLOW_CONSOLE_EMAIL: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r ../requirements.lock.txt
+      - name: Migrate
+        run: python manage.py migrate --noinput
+      - name: Run tests
+        # Django discovers test*.py under each app (renamed from *_tests.py).
+        run: python manage.py test library users backend --verbosity=1
+
+  e2e:
+    name: e2e (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SECRET_KEY: ci-test-secret-key-not-for-production-use-32chars
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      ALLOW_CONSOLE_EMAIL: "1"
+      CI: "true"
+      E2E_RELAX_THROTTLE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.lock.txt
+
+      - name: Install root + frontend npm deps
+        run: |
+          npm ci
+          npm ci --prefix frontend
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Migrate and seed E2E fixtures
+        working-directory: backend
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_e2e
+
+      - name: Run Playwright E2E
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
