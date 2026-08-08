@@ -508,7 +508,7 @@ npm run test:e2e
 | **TTS providers beyond edge** | `.env.example` notes only `edge`; `TTS_PROVIDER` abstraction exists but no Azure/Google impl |
 | **Referenced docs missing on disk** | See **Resolved in this pass** — `DEPLOY.md` / `FOLLOWUP.md` restored |
 | **`SQLITE_LOCK_FIX_REPORT.md`** | Appeared in earlier git status as untracked; **not found** on disk at audit time — SQLite lock mitigations are instead documented in `settings.py` comments (~111–117) |
-| **Legacy Django static CSS/JS** | `backend/static/library/css`, `users/js` still present alongside React ports — migration notes say SPA owns UI; risk of drift |
+| **Legacy Django static CSS/JS** | See **Resolved in this pass** — orphan `library.css` removed; users CSS/JS kept for legal `base.html` |
 | **flipPagination comment** | `ReadingProgressPageHint` typed with “Phase 3” wording (`flipPagination.ts` ~30) though Phase 3 checklist in `MIGRATION_NOTES.md` is marked complete — stale comment only |
 | **Migration numbering gap** | No `0020_*` between 0019 and 0021 |
 
@@ -569,6 +569,7 @@ CSS/JS “placeholder” classes for missing covers (`shelf-card__placeholder`, 
 | **Self-signed TLS material in repo** | Removed working-tree `deploy/certs/selfsigned.*` (never in git history); gitignore `deploy/certs/*.crt|*.key`; generate via `deploy/generate_selfsigned_cert.sh`. |
 | **Missing DEPLOY.md / FOLLOWUP.md** | Restored `DEPLOY.md` (env, TLS, migrate, Redis, SMTP, backups, rollback) and `FOLLOWUP.md` (deferred work, payment left open/out of scope). |
 | **Dependency CVEs non-blocking** | CI `dependency-audit` job fails PRs on pip HIGH/CRITICAL (`scripts/ci_pip_audit_high.py`) and `npm audit --audit-level=high`; weekly workflow remains advisory. Trivial `nanoid` patch via `npm audit fix`. |
+| **Duplicated Django/React library CSS** | Deleted unused `backend/static/library/css/library.css`; `MIGRATION_NOTES.md` documents remaining legal-page static only. |
 
 ### Positive controls
 

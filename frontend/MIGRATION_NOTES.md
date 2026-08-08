@@ -14,7 +14,7 @@
 | `templates/library/catalog.html` | Dashboard routes: `HomePage`, `DiscoverPage`, `CollectionsPage`, `MyLibraryPage` + `src/components/library/*` |
 | `templates/library/book_detail.html` | `src/pages/BookDetailPage.jsx` |
 | `static/library/css/library.css` | `src/assets/css/library.css` |
-| `static/library/js/catalog.js` (shelves + launch modal) | React state in `ShelvesPanel` + `ReaderLaunchModal` |
+| `static/library/js/catalog.js` (shelves + launch modal) | React state in `ReaderLaunchModal` + dashboard pages |
 | Immersive reader (flip / PDF / listen) | `ReaderPage` → `FlipReaderView` / `PdfReaderMode` |
 
 ## Still on Django
@@ -24,15 +24,33 @@
 | `/library/media/...` | Auth-gated PDF/audio streams (relative URLs + JWT cookie; Vite proxy in dev) |
 | `/password-reset/<uid>/<token>/` | SPA confirm (Django redirects to SPA when not using FRONTEND_DIST) |
 | `/admin/` | Publishing + generation jobs |
+| Legal HTML pages (`/terms/`, `/privacy/`, rights report) | Still render Django templates extending `templates/base.html` |
 
 > **Note:** The Django HTML immersive reader (`book_read.html` + static reader JS) has been **removed**. `/library/<slug>/read/` redirects to or serves the React SPA. There is no HTML reader fallback.
+
+## Django static assets (final state)
+
+SPA routes own CSS/JS under `frontend/src/assets/` and React components. **Removed** unused duplicate `backend/static/library/css/library.css` (no template references).
+
+**Intentionally kept** for legal/`base.html` chrome only:
+
+| Path | Used by |
+|------|---------|
+| `backend/static/users/css/auth.css` | `templates/base.html` |
+| `backend/static/users/css/logo.css` | `templates/base.html` |
+| `backend/static/users/js/constellation.js` | `templates/base.html` |
+| `backend/static/users/js/auth.js` | `templates/base.html` |
+| `backend/static/brand/`, `fonts/`, `audio/` | Branding, PDF fonts, TTS silence stub (not SPA CSS duplicates) |
+
+Migration for **SPA-owned routes is complete**. Remaining Django CSS/JS is legal-page chrome, not a second catalog/reader stack.
+
 
 ## React reader (default)
 
 | Piece | Location |
 |-------|----------|
 | Route | `/library/:slug/read` → `src/pages/ReaderPage.jsx` (`RequireAuth`) |
-| Feature flag | **Default ON** — `VITE_REACT_READER_ENABLED` / `REACT_READER_ENABLED` (kept for docs; HTML reader gone) |
+| Feature flag | Removed — React reader is the only implementation |
 | Manifest API | `GET /api/library/<slug>/reader/` — body, audio_sync, gated media URLs (entitlement required) |
 | Launch helper | `buildReadHref()` in `src/lib/readerOrigin.ts` |
 
