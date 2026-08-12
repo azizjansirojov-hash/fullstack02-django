@@ -58,7 +58,23 @@ Copy from [`backend/.env.example`](backend/.env.example). Do **not** commit real
 | `ENVIRONMENT` | Use `staging` only with console email smoke tests; production should omit or use `production` |
 | `SPA_ORIGIN` | Absolute SPA origin for emails/redirects in Vite+Django local dev; empty/`same` = relative |
 | `TTS_PROVIDER` | Default `edge` (see `ARCHITECTURE.md` TTS risk) |
+| `PAYMENTS_ENABLED` | `0` until merchant accounts exist; see [`PAYMENTS.md`](PAYMENTS.md) |
+| `BOOK_PRICE_TIYIN` | Required when payments enabled — global price in tiyin |
+| `PAYME_MERCHANT_ID` / `PAYME_MERCHANT_KEY` / `PAYME_TEST_MODE` | Payme credentials (required in prod if payments on) |
+| `CLICK_MERCHANT_ID` / `CLICK_SERVICE_ID` / `CLICK_SECRET_KEY` / `CLICK_TEST_MODE` | Click credentials (required in prod if payments on) |
 | `USE_TLS` | `1` behind HTTPS terminator |
+
+### Payment webhook registration
+
+When `PAYMENTS_ENABLED=1`, register HTTPS endpoints in each merchant dashboard:
+
+| Provider | URL |
+|----------|-----|
+| Payme | `https://<host>/api/payments/payme/webhook/` |
+| Click Prepare | `https://<host>/api/payments/click/prepare/` |
+| Click Complete | `https://<host>/api/payments/click/complete/` |
+
+Full sandbox / reconciliation runbook: [`PAYMENTS.md`](PAYMENTS.md).
 
 ## Database migrations
 
@@ -150,6 +166,7 @@ Restore hints are printed by the script (`pg_restore` + media `tar` extract). St
 - [ ] Backups for Postgres + media
 - [ ] Health: `GET /health/generation/`
 - [ ] Confirm password-reset email links open `/password-reset/<uid>/<token>/` (SPA)
+- [ ] If enabling payments: `PAYMENTS_ENABLED=1`, `BOOK_PRICE_TIYIN`, Payme/Click credentials, webhook URLs registered ([`PAYMENTS.md`](PAYMENTS.md))
 
 ## Local Vite + Django (dev)
 

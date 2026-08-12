@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 import ReaderLaunchModal from '../components/library/ReaderLaunchModal'
 import ReviewSection from '../components/library/ReviewSection'
+import CheckoutButton from '../components/library/CheckoutButton'
 import {
   fetchBookDetail,
   removePlanned,
@@ -61,6 +62,8 @@ export default function BookDetailPage() {
   const readingStatus = book?.reading_status || null
   const hasAccess = Boolean(book?.has_access)
   const canOpenReader = hasAccess && Boolean(book?.can_read)
+  const isPurchasable = Boolean(book?.is_purchasable)
+  const rightsStatus = book?.rights_status || ''
   const readHref = book
     ? buildReadHref(book.read_url || `/library/${book.slug}/read/`, 'focus', false)
     : '#'
@@ -180,14 +183,33 @@ export default function BookDetailPage() {
               </p>
               {book.summary ? <p className="reader-hero__summary">{book.summary}</p> : null}
               {error ? <p className="reader-hero__status-error">{error}</p> : null}
-              {!hasAccess ? (
+              {!hasAccess && isPurchasable ? (
+                <CheckoutButton
+                  bookSlug={book.slug}
+                  priceTiyin={book.book_price_tiyin ?? null}
+                />
+              ) : null}
+              {!hasAccess && !isPurchasable ? (
                 <p className="reader-hero__status-error" role="status">
-                  Bu kitob pullik. To‘liq o‘qish, tinglash va PDF uchun xarid (Purchase)
-                  talab qilinadi. Hozircha to‘lov shlyuzi ulanmagan — admin orqali
-                  “Mark as paid” qiling yoki huquq holatini public_domain qiling.
+                  {rightsStatus === 'unset' || rightsStatus === 'pending_clearance'
+                    ? 'Bu kitob hozircha sotuvda emas (huquq holati tasdiqlanmagan).'
+                    : 'Bu kitob pullik. To‘liq o‘qish, tinglash va PDF uchun xarid talab qilinadi.'}
                 </p>
               ) : null}
               <div className="reader-actions">
+                {canOpenReader ? (
+                  <a className="reader-hero__read" href={readHref}>
+                    O‘qishni davom ettirish
+                  </a>
+                ) : !hasAccess ? (
+                  isPurchasable ? null : (
+                    <button type="button" className="reader-hero__read reader-hero__read--ghost" disabled>
+                      Sotib olish kerak
+                    </button>
+                  )
+                ) : (
+                  <p className="reader-hero__unavailable">O‘qiladigan kontent hali mavjud emas.</p>
+                )}
                 <button
                   type="button"
                   className="reader-hero__read reader-hero__read--ghost"
@@ -204,17 +226,6 @@ export default function BookDetailPage() {
                 >
                   {hasAccess ? 'Boshidan boshlash' : 'Boshidan (yopiq)'}
                 </button>
-                {canOpenReader ? (
-                  <a className="reader-hero__read reader-hero__read--ghost" href={readHref}>
-                    O‘qishni davom ettirish
-                  </a>
-                ) : !hasAccess ? (
-                  <button type="button" className="reader-hero__read reader-hero__read--ghost" disabled>
-                    Sotib olish kerak
-                  </button>
-                ) : (
-                  <p className="reader-hero__unavailable">O‘qiladigan kontent hali mavjud emas.</p>
-                )}
                 {!readingStatus || readingStatus === 'planned' ? (
                   <button
                     type="button"

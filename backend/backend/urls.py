@@ -89,7 +89,10 @@ if _spa_enabled:
         path('', include((users_urlpatterns, 'users'))),
         path('api/library/', include('library.api_urls')),
         path('api/notifications/', include('library.notification_urls')),
+        path('api/payments/', include('payments.urls')),
         path('library/', include((library_urlpatterns, 'library'))),
+        path('payment/status/<uuid:transaction_id>/', _spa_index, name='payment-status'),
+        path('payment/status/<uuid:transaction_id>', _spa_index),
         *_cover_patterns,
         re_path(
             r'^assets/(?P<path>.*)$',
@@ -117,6 +120,7 @@ else:
         path('', include((users_urlpatterns, 'users'))),
         path('api/library/', include('library.api_urls')),
         path('api/notifications/', include('library.notification_urls')),
+        path('api/payments/', include('payments.urls')),
         path('library/', include((library_urlpatterns, 'library'))),
         *_cover_patterns,
     ]

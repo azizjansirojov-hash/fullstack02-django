@@ -60,6 +60,8 @@ def serialize_book_card(
     Pass ``paid_book_ids`` from a single batched Purchase query when serializing
     many cards to avoid per-book EXISTS lookups.
     """
+    from payments.payment_service import book_price_tiyin, payments_enabled
+
     has_access = False
     if authenticated and user is not None:
         has_access = user_has_access_to_book(
@@ -70,6 +72,15 @@ def serialize_book_card(
     audio_url = audio_chapters[0]['url'] if audio_chapters and include_urls else ''
     avg = getattr(book, 'avg_rating', None)
     review_total = getattr(book, 'review_total', None)
+    price = book_price_tiyin()
+    is_purchasable = (
+        payments_enabled()
+        and price is not None
+        and authenticated
+        and user is not None
+        and book.rights_status == book.RightsStatus.LICENSED
+        and not has_access
+    )
     return {
         'slug': book.slug,
         'author_name': book.author_name,
@@ -81,6 +92,8 @@ def serialize_book_card(
         'has_audio': book.has_audio(),
         'has_access': has_access,
         'rights_status': book.rights_status,
+        'book_price_tiyin': price,
+        'is_purchasable': is_purchasable,
         'pdf_generation_status': book.pdf_generation_status or 'pending',
         'audio_generation_status': book.audio_generation_status or 'pending',
         'pdf_url': book.gated_pdf_url() if include_urls else '',

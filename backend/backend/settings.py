@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'users.apps.UsersConfig',
+    'payments.apps.PaymentsConfig',
 ]
 
 MIDDLEWARE = [
@@ -110,8 +111,17 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
             'OPTIONS': {
                 # Avoid "database is locked" during brief concurrent writes
-                # (admin save + background PDF/TTS status updates).
+                # (admin save + background PDF/TTS status updates, E2E progress
+                # heartbeats racing ReadingSession upserts under runserver threads).
+                # timeout alone is not enough under DEFERRED: lock upgrades can
+                # raise SQLITE_BUSY immediately. IMMEDIATE + WAL is Django's
+                # recommended SQLite pattern (docs: "Database is locked" errors).
                 'timeout': 30,
+                'transaction_mode': 'IMMEDIATE',
+                'init_command': (
+                    'PRAGMA journal_mode=WAL;'
+                    'PRAGMA synchronous=NORMAL;'
+                ),
             },
         }
     }
@@ -199,6 +209,7 @@ REST_FRAMEWORK = {
         'review_write': '10/min',
         # Progress heartbeats (~50s gap) + page turns; blocks rapid-fire abuse.
         'reading_progress': '30/min',
+        'payment_checkout': '10/min',
     },
 }
 
@@ -327,6 +338,57 @@ else:
 TTS_PROVIDER = env('TTS_PROVIDER', default='edge')
 TTS_VOICE = env('TTS_VOICE', default='uz-UZ-MadinaNeural')
 
+# Payments (Payme + Click). Off by default; enable when merchant credentials exist.
+PAYMENTS_ENABLED = env.bool('PAYMENTS_ENABLED', default=False)
+_book_price_raw = env('BOOK_PRICE_TIYIN', default='')
+BOOK_PRICE_TIYIN = None
+if str(_book_price_raw).strip() != '':
+    try:
+        BOOK_PRICE_TIYIN = int(_book_price_raw)
+    except (TypeError, ValueError) as exc:
+        raise ImproperlyConfigured(
+            'BOOK_PRICE_TIYIN must be a positive integer (tiyin). '
+            f'Got {_book_price_raw!r}.'
+        ) from exc
+    if BOOK_PRICE_TIYIN <= 0:
+        raise ImproperlyConfigured(
+            'BOOK_PRICE_TIYIN must be a positive integer (tiyin). '
+            f'Got {BOOK_PRICE_TIYIN!r}.'
+        )
+
+PAYME_MERCHANT_ID = env('PAYME_MERCHANT_ID', default='')
+PAYME_MERCHANT_KEY = env('PAYME_MERCHANT_KEY', default='')
+PAYME_TEST_MODE = env.bool('PAYME_TEST_MODE', default=True)
+CLICK_MERCHANT_ID = env('CLICK_MERCHANT_ID', default='')
+CLICK_SERVICE_ID = env('CLICK_SERVICE_ID', default='')
+CLICK_SECRET_KEY = env('CLICK_SECRET_KEY', default='')
+CLICK_TEST_MODE = env.bool('CLICK_TEST_MODE', default=True)
+
+if PAYMENTS_ENABLED:
+    if BOOK_PRICE_TIYIN is None:
+        raise ImproperlyConfigured(
+            'PAYMENTS_ENABLED=True requires BOOK_PRICE_TIYIN to be a positive '
+            'integer (amount in tiyin). See backend/.env.example and PAYMENTS.md.'
+        )
+    if not DEBUG:
+        _missing_pay = [
+            name
+            for name, val in (
+                ('PAYME_MERCHANT_ID', PAYME_MERCHANT_ID),
+                ('PAYME_MERCHANT_KEY', PAYME_MERCHANT_KEY),
+                ('CLICK_MERCHANT_ID', CLICK_MERCHANT_ID),
+                ('CLICK_SERVICE_ID', CLICK_SERVICE_ID),
+                ('CLICK_SECRET_KEY', CLICK_SECRET_KEY),
+            )
+            if not (val or '').strip()
+        ]
+        if _missing_pay:
+            raise ImproperlyConfigured(
+                'Production (DEBUG=False) with PAYMENTS_ENABLED=True requires: '
+                + ', '.join(_missing_pay)
+                + '. See DEPLOY.md and PAYMENTS.md.'
+            )
+
 # Generation abuse controls
 GENERATION_MAX_RUNNING = env.int('GENERATION_MAX_RUNNING', default=2)
 GENERATION_REGENERATE_DAILY_LIMIT = env.int(
@@ -373,6 +435,10 @@ LOGGING = {
             'propagate': False,
         },
         'library': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'payments': {
             'handlers': ['console'],
             'level': 'INFO',
         },

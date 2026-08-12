@@ -33,3 +33,38 @@ describe('readerOrigin helpers', () => {
     expect(getAppOrigin()).toBe(window.location.origin)
   })
 })
+
+describe('resolvePostLoginHref', () => {
+  it('returns relative path for same-origin reader absolute URL', async () => {
+    const { resolvePostLoginHref } = await import('./readerOrigin')
+    const href = `${window.location.origin}/library/some-book/read`
+    expect(resolvePostLoginHref(href)).toBe('/library/some-book/read')
+  })
+
+  it('returns null for cross-origin absolute reader URL', async () => {
+    const { resolvePostLoginHref } = await import('./readerOrigin')
+    expect(resolvePostLoginHref('https://evil.com/library/some-book/read')).toBeNull()
+  })
+
+  it('returns null for same-origin non-reader absolute URL', async () => {
+    const { resolvePostLoginHref } = await import('./readerOrigin')
+    expect(resolvePostLoginHref(`${window.location.origin}/admin`)).toBeNull()
+  })
+
+  it('returns relative reader path unchanged', async () => {
+    const { resolvePostLoginHref } = await import('./readerOrigin')
+    expect(resolvePostLoginHref('/library/some-book/read')).toBe('/library/some-book/read')
+  })
+
+  it('returns null for relative non-reader path', async () => {
+    const { resolvePostLoginHref } = await import('./readerOrigin')
+    expect(resolvePostLoginHref('/settings')).toBeNull()
+  })
+
+  it('returns null for null, undefined, or empty string', async () => {
+    const { resolvePostLoginHref } = await import('./readerOrigin')
+    expect(resolvePostLoginHref(null)).toBeNull()
+    expect(resolvePostLoginHref(undefined)).toBeNull()
+    expect(resolvePostLoginHref('')).toBeNull()
+  })
+})

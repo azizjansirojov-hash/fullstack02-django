@@ -19,6 +19,7 @@ export type UseCatalogOptions = {
 export type UseCatalogResult = {
   catalog: CatalogResponse | null
   error: string | null
+  planError: string | null
   loading: boolean
   launchBook: LibraryBookView | null
   setLaunchBook: (book: LibraryBookView | null) => void
@@ -39,6 +40,7 @@ export function useCatalog({
 }: UseCatalogOptions = {}): UseCatalogResult {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [planError, setPlanError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [launchBook, setLaunchBook] = useState<LibraryBookView | null>(null)
 
@@ -114,18 +116,25 @@ export function useCatalog({
 
   const handlePlanToggle = useCallback(
     async (book: BookCardWithStatus, isPlanned: boolean) => {
+      setPlanError(null)
       try {
         if (isPlanned) {
           const { response } = await removePlanned(book.slug)
-          if (!response.ok) return
+          if (!response.ok) {
+            setPlanError("Rejani yangilab bo‘lmadi. Qayta urinib ko‘ring.")
+            return
+          }
           patchBookStatus(book.slug, null)
         } else {
           const { response, data } = await setReadingStatus(book.slug, 'planned')
-          if (!response.ok) return
+          if (!response.ok) {
+            setPlanError("Rejani yangilab bo‘lmadi. Qayta urinib ko‘ring.")
+            return
+          }
           patchBookStatus(book.slug, (data?.status as ReadingStatus) || 'planned')
         }
       } catch {
-        /* ignore */
+        setPlanError("Tarmoq xatoligi. Rejani yangilab bo‘lmadi.")
       }
     },
     [patchBookStatus],
@@ -134,6 +143,7 @@ export function useCatalog({
   return {
     catalog,
     error,
+    planError,
     loading,
     launchBook,
     setLaunchBook,

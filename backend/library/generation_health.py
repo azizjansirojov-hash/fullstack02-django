@@ -35,10 +35,21 @@ def generation_health_payload() -> dict:
     running = running_qs.count()
     stale_running = running_qs.filter(locked_at__lt=running_cutoff).count()
 
-    failed_recent = GenerationJob.objects.filter(
+    failed_recent_qs = GenerationJob.objects.filter(
         status=GenerationJob.Status.FAILED,
         updated_at__gte=timezone.now() - timedelta(hours=24),
-    ).count()
+    )
+    failed_recent = failed_recent_qs.count()
+    last_failed = failed_recent_qs.order_by('-updated_at').first()
+    last_failed_summary = None
+    if last_failed is not None:
+        last_failed_summary = {
+            'job_id': last_failed.pk,
+            'book_id': last_failed.book_id,
+            'job_type': last_failed.job_type,
+            'error_message': (last_failed.error_message or '')[:500],
+            'updated_at': last_failed.updated_at.isoformat(),
+        }
 
     worker_likely_down = stale_queued > 0 or stale_running > 0
     return {
@@ -48,6 +59,7 @@ def generation_health_payload() -> dict:
         'running': running,
         'stale_running': stale_running,
         'failed_recent_24h': failed_recent,
+        'last_failed': last_failed_summary,
         'worker_likely_down': worker_likely_down,
         'stale_after_seconds': getattr(
             settings, 'GENERATION_STALE_QUEUED_SECONDS', 300

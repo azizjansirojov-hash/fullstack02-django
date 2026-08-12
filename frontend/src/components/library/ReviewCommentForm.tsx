@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { ReviewFormStatus } from '../../lib/reviews/useBookReviews'
 import { InteractiveStarRating } from './reviewStars'
 

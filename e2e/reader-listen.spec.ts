@@ -9,6 +9,60 @@ test.describe('listen / audio overlay + progress', () => {
     await resetProgressPage(page, E2E.pdSlug, 'flip')
   })
 
+  test('React: audio overlay plays and currentTime advances (real playback)', async ({ page }) => {
+    await openReactListen(page)
+
+    const audio = page.locator('audio.flip-reader-view__audio, .flip-reader-view audio')
+    await expect(audio).toHaveCount(1)
+
+    // Wait until gated media metadata is available (playable fixture MP3).
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const el = document.querySelector('audio') as HTMLAudioElement | null
+          return el && Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0
+        })
+      }, { timeout: 20_000 })
+      .toBeGreaterThan(0)
+
+    const progressed = await page.evaluate(async () => {
+      const el = document.querySelector('audio') as HTMLAudioElement | null
+      if (!el) throw new Error('no audio')
+      el.muted = true
+      el.currentTime = 0
+      try {
+        await el.play()
+      } catch (err) {
+        return { ok: false, reason: String(err), currentTime: el.currentTime, error: el.error?.code }
+      }
+      const start = el.currentTime
+      await new Promise((r) => setTimeout(r, 800))
+      return {
+        ok: !el.paused && el.currentTime > start,
+        paused: el.paused,
+        start,
+        currentTime: el.currentTime,
+        duration: el.duration,
+        error: el.error?.code ?? null,
+      }
+    })
+
+    expect(progressed.ok, JSON.stringify(progressed)).toBeTruthy()
+    expect(Number(progressed.currentTime)).toBeGreaterThan(Number(progressed.start))
+
+    await page.evaluate(() => {
+      const el = document.querySelector('audio') as HTMLAudioElement | null
+      el?.pause()
+    })
+
+    await expect
+      .poll(async () => {
+        const data = await fetchProgress(page.request, E2E.pdSlug)
+        return data.exists && data.mode === 'listen' ? Number(data.position) : -1
+      }, { timeout: 20_000 })
+      .toBeGreaterThan(0)
+  })
+
   test('React: audio overlay plays and saves listen progress on pause', async ({ page }) => {
     await openReactListen(page)
 
@@ -45,15 +99,12 @@ test.describe('listen / audio overlay + progress', () => {
       }, { timeout: 20_000 })
       .toBeGreaterThan(0)
 
-    // Stub MP3 may not restore <audio>.currentTime; API position is the persistence contract.
     const afterReload = await fetchProgress(page.request, E2E.pdSlug)
     expect(Number(afterReload.position)).toBeGreaterThan(0)
   })
 
   test('React: toolbar Tinglash starts playback without modal autoplay hash', async ({ page }) => {
-    // Stub seed MP3 is too small to decode (MEDIA_ERR_SRC_NOT_SUPPORTED). Count
-    // play() calls so we still assert the toolbar path starts playback, not only
-    // that the bar becomes visible.
+    // Count play() calls so we still assert the toolbar path starts playback.
     await page.addInitScript(() => {
       ;(window as unknown as { __libroPlayCalls?: number }).__libroPlayCalls = 0
       const proto = HTMLMediaElement.prototype

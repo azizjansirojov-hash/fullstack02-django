@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from library.models import AudioChapter, Book, BookTranslation, Purchase, ReadingProgress
@@ -61,8 +63,14 @@ def _stub_pdf_bytes(pages: int = 3) -> bytes:
 
 
 def _stub_audio_bytes() -> bytes:
-    # Extension-validated only; tiny payload is enough for gated streaming + <audio>.
-    return b'ID3\x03\x00\x00\x00\x00\x00\x00e2e-audio-stub-payload'
+    """Playable silent-ish MPEG frames so <audio> can advance currentTime in E2E."""
+    fixture = Path(__file__).resolve().parent.parent / 'fixtures' / 'e2e-silence.mp3'
+    if fixture.is_file():
+        return fixture.read_bytes()
+    # MPEG-1 Layer III, 128 kbps, 44100 Hz, stereo — frame length 417.
+    header = bytes([0xFF, 0xFB, 0x90, 0x04])
+    frame = header + bytes(417 - 4)
+    return frame * 120
 
 
 def seed_e2e_data() -> dict:
@@ -98,8 +106,7 @@ def seed_e2e_data() -> dict:
         book.pdf_file.save(f'{slug}.pdf', ContentFile(pdf_bytes), save=False)
         if not book.cover_image:
             book.cover_image.save(f'{slug}.png', ContentFile(_tiny_png()), save=False)
-        if not book.audio_file:
-            book.audio_file.save(f'{slug}.mp3', ContentFile(audio_bytes), save=False)
+        book.audio_file.save(f'{slug}.mp3', ContentFile(audio_bytes), save=False)
         book.save()
 
         BookTranslation.objects.update_or_create(
@@ -151,6 +158,12 @@ class Command(BaseCommand):
     help = 'Seed idempotent public-domain + licensed books and e2e_owner for Playwright.'
 
     def handle(self, *args, **options):
+        if not settings.DEBUG:
+            raise CommandError(
+                'seed_e2e refuses to run when DEBUG=False. This command creates a '
+                'user with a hardcoded, publicly-known password and must only be '
+                'run in local/CI environments (DEBUG=True). Refusing to continue.'
+            )
         data = seed_e2e_data()
         self.stdout.write(
             self.style.SUCCESS(

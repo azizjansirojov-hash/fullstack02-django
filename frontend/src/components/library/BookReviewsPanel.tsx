@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useBookReviews } from '../../lib/reviews/useBookReviews'
 import ReviewCommentForm from './ReviewCommentForm'
 import { InteractiveStarRating, StarsDisplay } from './reviewStars'

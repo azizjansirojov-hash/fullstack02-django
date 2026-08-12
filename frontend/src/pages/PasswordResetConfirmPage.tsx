@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 import AppShell, { SecureStatusChip } from '../components/layout/AppShell'
 import { confirmPasswordReset, ensureCsrf } from '../api/auth'
 import '../assets/css/auth.css'

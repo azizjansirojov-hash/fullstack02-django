@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FlipBookMode, { MAX_ZOOM, MIN_ZOOM, RESIZE_DELAY_MS } from './FlipBookMode'
 import * as libraryApi from '../../api/library'

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import RequireAuth from './components/layout/RequireAuth'
 import GuestOnly from './components/layout/GuestOnly'
@@ -15,6 +15,7 @@ import DiscoverPage from './pages/DiscoverPage'
 import MyLibraryPage from './pages/MyLibraryPage'
 import BookDetailPage from './pages/BookDetailPage'
 import ReaderPage from './pages/ReaderPage'
+import PaymentStatusPage from './pages/PaymentStatusPage'
 import {
   INTRO_SEEN_KEY,
   INTRO_SEEN_KEY_LEGACY,
@@ -68,6 +69,7 @@ function AppRoutes() {
 
         <Route element={<RequireAuth />}>
           <Route path="/library/:slug/read" element={<ReaderPage />} />
+          <Route path="/payment/status/:transactionId" element={<PaymentStatusPage />} />
         </Route>
 
         <Route path="*" element={<HomeRedirect />} />

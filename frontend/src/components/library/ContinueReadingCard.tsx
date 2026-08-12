@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { saveReadingProgress } from '../../api/library'
 import { useBookReviews } from '../../lib/reviews/useBookReviews'
 import { buildReadHref } from '../../lib/readerOrigin'
@@ -64,7 +64,7 @@ export type ContinueReadingCardProps = {
 }
 
 /**
- * Continue-reading hero card — progress, rating, listen / start-over / continue, comments.
+ * Continue-reading hero card — progress, rating, continue / listen / start-over, comments.
  */
 export default function ContinueReadingCard({ book, onLaunch, emptyHint }: ContinueReadingCardProps) {
   const [confirmRestart, setConfirmRestart] = useState(false)
@@ -212,6 +212,14 @@ export default function ContinueReadingCard({ book, onLaunch, emptyHint }: Conti
           <div className="continue-card__actions">
             <button
               type="button"
+              className="continue-card__btn continue-card__btn--primary continue-card__btn--continue"
+              onClick={handleContinue}
+              disabled={actionBusy}
+            >
+              O&apos;qishni davom ettirish
+            </button>
+            <button
+              type="button"
               className="continue-card__btn continue-card__btn--listen"
               onClick={handleListen}
               disabled={actionBusy || !canListen}
@@ -257,14 +265,6 @@ export default function ContinueReadingCard({ book, onLaunch, emptyHint }: Conti
                 </button>
               </span>
             )}
-            <button
-              type="button"
-              className="continue-card__btn continue-card__btn--primary continue-card__btn--continue"
-              onClick={handleContinue}
-              disabled={actionBusy}
-            >
-              O&apos;qishni davom ettirish
-            </button>
           </div>
         </div>
       </div>

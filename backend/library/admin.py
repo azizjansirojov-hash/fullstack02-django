@@ -1,5 +1,7 @@
 """Django admin for the Uzbek book bookstore catalog."""
 
+import logging
+
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
@@ -17,6 +19,8 @@ from .models import (
     ReadingSession,
     Review,
 )
+
+logger = logging.getLogger('library.admin')
 
 
 @admin.register(Purchase)
@@ -41,11 +45,21 @@ class PurchaseAdmin(admin.ModelAdmin):
         from django.utils import timezone
 
         updated = 0
+        marked_ids = []
         for purchase in queryset.exclude(status=Purchase.Status.PAID):
             purchase.status = Purchase.Status.PAID
             purchase.paid_at = timezone.now()
             purchase.save(update_fields=['status', 'paid_at', 'updated_at'])
+            marked_ids.append(purchase.pk)
             updated += 1
+        if marked_ids:
+            logger.warning(
+                'admin_mark_as_paid actor=%s purchase_ids=%s count=%s '
+                '(manual override — mixed with gateway-paid entitlements)',
+                getattr(request.user, 'pk', None),
+                marked_ids,
+                updated,
+            )
         self.message_user(
             request,
             f'Marked {updated} purchase(s) as paid.',

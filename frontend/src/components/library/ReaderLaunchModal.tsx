@@ -94,13 +94,17 @@ export default function ReaderLaunchModal({
   const [totalPages, setTotalPages] = useState<number | null>(null)
   const [readingStatus, setReadingStatusState] = useState<ReadingStatus | null>(null)
   const [finishBusy, setFinishBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     setLiveBook(book)
   }, [book])
 
   useEffect(() => {
-    if (!open) setConfirmRestart(false)
+    if (!open) {
+      setConfirmRestart(false)
+      setActionError(null)
+    }
   }, [open])
 
   const slug = liveBook?.slug || book?.slug || ''
@@ -309,9 +313,10 @@ export default function ReaderLaunchModal({
         status: 'reading',
       })
       setReadingStatusState('reading')
+      setActionError(null)
       onStatusChange?.()
     } catch {
-      /* server may be unreachable; local reset still applies */
+      setActionError("Progressni saqlab bo‘lmadi. Lokal qayta boshlash qo‘llanildi.")
     }
   }
 
@@ -326,9 +331,10 @@ export default function ReaderLaunchModal({
           status: 'reading',
         })
         setReadingStatusState('reading')
+        setActionError(null)
         onStatusChange?.()
       } catch {
-        /* continue navigation even if status update fails */
+        setActionError("O‘qish holatini yangilab bo‘lmadi.")
       }
     }
   }
@@ -340,8 +346,13 @@ export default function ReaderLaunchModal({
       const { response } = await setReadingStatus(slug, 'finished')
       if (response.ok) {
         setReadingStatusState('finished')
+        setActionError(null)
         onStatusChange?.()
+      } else {
+        setActionError("Kitobni tugatilgan deb belgilab bo‘lmadi.")
       }
+    } catch {
+      setActionError("Kitobni tugatilgan deb belgilab bo‘lmadi.")
     } finally {
       setFinishBusy(false)
     }
@@ -423,8 +434,9 @@ export default function ReaderLaunchModal({
             <p className="reader-launch-modal__byline" id="launch-byline">
               {byline}
             </p>
-            {(pdfPreparing || audioPreparing || pdfFailed || audioFailed || !hasAccess) && (
+            {(pdfPreparing || audioPreparing || pdfFailed || audioFailed || !hasAccess || actionError) && (
               <p className="reader-launch-modal__status" role="status">
+                {actionError ? `${actionError} ` : ''}
                 {!hasAccess
                   ? 'Bu kitob pullik — o‘qish/tinglash/PDF uchun xarid talab qilinadi. '
                   : ''}

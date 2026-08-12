@@ -50,3 +50,30 @@ Mitigations in this codebase (not a second provider):
 3. Set `TTS_PROVIDER` in the environment (unknown values raise `NotImplementedError` with guidance).
 
 Do **not** treat edge-tts as a hard production SLA until a supported commercial provider is available or risk is explicitly accepted.
+
+## Payments (Payme + Click)
+
+Online checkout lives in the [`backend/payments/`](backend/payments/) app. Entitlement is unchanged: successful payments create/update `library.Purchase` with `status=paid`, which [`user_can_access_book`](backend/library/access.py) already understands.
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant SPA
+  participant API as Django_API
+  participant GW as Payme_or_Click
+  participant WH as Webhook
+  participant DB
+
+  User->>SPA: Choose provider
+  SPA->>API: POST /api/payments/checkout/
+  API->>DB: PaymentTransaction created amount snapshot
+  API-->>SPA: checkout_url
+  SPA->>GW: Redirect
+  GW->>WH: Callback verified
+  WH->>DB: select_for_update tx to paid
+  WH->>DB: Purchase create_or_update paid
+  SPA->>API: GET /api/payments/transactions/id/
+  API-->>SPA: status paid
+```
+
+Provider abstraction mirrors TTS: `payments/providers/` + `get_payment_provider()` in `payment_service.py`. See [`PAYMENTS.md`](PAYMENTS.md) for sandbox, reconciliation, and env vars.

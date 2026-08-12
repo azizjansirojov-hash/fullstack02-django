@@ -640,6 +640,7 @@ class Notification(models.Model):
     class Type(models.TextChoices):
         AUDIO_READY = 'audio_ready', 'Audio ready'
         PURCHASE_PAID = 'purchase_paid', 'Purchase paid'
+        PURCHASE_REFUNDED = 'purchase_refunded', 'Purchase refunded'
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -1,21 +1,40 @@
 """Shared catalog browse context for library templates."""
 
+import logging
+
 from django.core.cache import cache
+from django.core.cache.backends.base import InvalidCacheBackendError
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Prefetch, Q
 
 from .models import Book, BookTranslation
 
+logger = logging.getLogger(__name__)
+
+# redis is optional at import time (LocMem cache). When REDIS_URL is set, Django's
+# RedisCache still requires the redis package installed.
+_CACHE_INVALIDATE_ERRORS = (InvalidCacheBackendError,)
+try:
+    from redis.exceptions import RedisError
+
+    _CACHE_INVALIDATE_ERRORS = (RedisError, InvalidCacheBackendError)
+except ImportError:  # pragma: no cover
+    pass
+
 VALID_CATEGORIES = {code for code, _label in Book.Category.choices}
 PAGE_SIZE = 24
 DISPLAY_LANG = BookTranslation.Language.UZ
 MAX_SEARCH_QUERY_LENGTH = 200
-CATEGORY_SHELVES_CACHE_KEY = 'catalog:category_shelves:v2'
+# v3 stores JSON-safe {code, label, count, book_ids} — not live ORM instances.
+CATEGORY_SHELVES_CACHE_KEY = 'catalog:category_shelves:v3'
 CATEGORY_SHELVES_CACHE_TTL = 60
 
 
 def invalidate_category_shelves_cache():
-    cache.delete(CATEGORY_SHELVES_CACHE_KEY)
+    try:
+        cache.delete(CATEGORY_SHELVES_CACHE_KEY)
+    except _CACHE_INVALIDATE_ERRORS as exc:
+        logger.warning('Category shelf cache invalidation failed: %s', exc)
 
 
 def published_books_queryset():
@@ -40,12 +59,67 @@ def _uzbek_translation_prefetch():
     )
 
 
+def _serialize_category_shelf_payload(category_lists):
+    """Convert ORM shelf groups to JSON-safe cache payloads."""
+    return [
+        {
+            'code': group['code'],
+            'label': group['label'],
+            'count': group['count'],
+            'book_ids': [item['book'].pk for item in group['items']],
+        }
+        for group in category_lists
+    ]
+
+
+def _hydrate_category_lists(cached_payload):
+    """Rebuild [{book, translation}, …] groups from cached book_ids."""
+    all_ids = []
+    for group in cached_payload:
+        all_ids.extend(group['book_ids'])
+    if not all_ids:
+        return [
+            {
+                'code': group['code'],
+                'label': group['label'],
+                'items': [],
+                'count': group['count'],
+            }
+            for group in cached_payload
+        ]
+
+    books = (
+        published_books_queryset()
+        .filter(pk__in=all_ids)
+        .prefetch_related(_uzbek_translation_prefetch(), 'audio_chapters')
+    )
+    by_id = {book.pk: book for book in books}
+    category_lists = []
+    for group in cached_payload:
+        items = []
+        for book_id in group['book_ids']:
+            book = by_id.get(book_id)
+            if book is None:
+                continue
+            translation = book.get_translation(DISPLAY_LANG)
+            items.append({'book': book, 'translation': translation})
+        category_lists.append(
+            {
+                'code': group['code'],
+                'label': group['label'],
+                'items': items,
+                'count': group['count'],
+            }
+        )
+    return category_lists
+
+
 def build_category_lists(*, use_cache=True):
     """Category shelf structure (all published books), optionally cached."""
     if use_cache:
         cached = cache.get(CATEGORY_SHELVES_CACHE_KEY)
         if cached is not None:
-            return cached
+            return _hydrate_category_lists(cached)
 
     published = (
         published_books_queryset()
@@ -70,7 +144,11 @@ def build_category_lists(*, use_cache=True):
             }
         )
     if use_cache:
-        cache.set(CATEGORY_SHELVES_CACHE_KEY, category_lists, CATEGORY_SHELVES_CACHE_TTL)
+        cache.set(
+            CATEGORY_SHELVES_CACHE_KEY,
+            _serialize_category_shelf_payload(category_lists),
+            CATEGORY_SHELVES_CACHE_TTL,
+        )
     return category_lists
 
 
@@ -89,6 +167,7 @@ def build_catalog_context(request):
             _uzbek_translation_prefetch(),
             'audio_chapters',
         )
+        .order_by('-created_at', 'author_name', 'slug')
         .distinct()
     )
 

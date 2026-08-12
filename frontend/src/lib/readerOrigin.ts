@@ -53,14 +53,32 @@ export function isDjangoReaderPath(pathOrUrl: string | null | undefined): boolea
 }
 
 /**
- * Absolute href for a post-login redirect into the reader (or absolute URL).
- * Relative non-reader paths return null so the caller uses navigate().
+ * Same-origin reader href for post-login assign(); otherwise null for navigate().
  */
 export function resolvePostLoginHref(redirectUrl: string | null | undefined): string | null {
   if (!redirectUrl) return null
+
+  // Security (open-redirect fix): an absolute URL is only ever safe to hand
+  // to window.location.assign() if it (a) resolves to THIS app's own origin
+  // and (b) targets the reader route. Anything else — a different host, or
+  // a same-host path that isn't the reader — must fall through to `null` so
+  // the caller performs an in-app, same-origin navigate() instead of a real
+  // browser navigation.
   if (redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://')) {
-    return redirectUrl
+    let parsed: URL
+    try {
+      parsed = new URL(redirectUrl)
+    } catch {
+      return null
+    }
+    const currentOrigin = typeof window !== 'undefined' ? window.location?.origin : undefined
+    const isSameOrigin = Boolean(currentOrigin) && parsed.origin === currentOrigin
+    if (isSameOrigin && isReaderPath(parsed.pathname)) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+    return null
   }
+
   const path = redirectUrl.startsWith('/') ? redirectUrl : `/${redirectUrl}`
   if (isReaderPath(path)) {
     return path

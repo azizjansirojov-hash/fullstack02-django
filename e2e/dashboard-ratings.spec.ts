@@ -38,16 +38,17 @@ test.describe('dashboard continue-card ratings', () => {
     await expect(card).toBeVisible({ timeout: 20_000 })
     await expect(card.getByRole('heading', { name: E2E.pdTitle })).toBeVisible()
 
-    // Button order: Tinglash → Boshidan → Davom (by accessible name, not position index alone)
+    // Button order: Davom → Tinglash → Boshidan (DOM order = tab/SR order)
+    await expect(card.getByRole('button', { name: /O.qishni davom ettirish/ })).toBeVisible()
     await expect(card.getByRole('button', { name: /^Tinglash/ })).toBeVisible()
     await expect(card.getByRole('button', { name: /Boshidan boshlash/ })).toBeVisible()
-    await expect(card.getByRole('button', { name: /O.qishni davom ettirish/ })).toBeVisible()
 
-    const actionLabels = await card.locator('.continue-card__actions button').allTextContents()
+    const actionLabels = await card.locator('.continue-card__actions > button').allTextContents()
     const normalized = actionLabels.map((t) => t.trim())
-    expect(normalized[0]).toMatch(/^Tinglash/)
-    expect(normalized[1]).toMatch(/Boshidan boshlash/)
-    expect(normalized[2]).toMatch(/davom ettirish/i)
+    expect(normalized[0]).toMatch(/davom ettirish/i)
+    expect(normalized[1]).toMatch(/^Tinglash/)
+    expect(normalized[2]).toMatch(/Boshidan boshlash/)
+    await expect(card.locator('.continue-card__btn--continue')).toHaveClass(/continue-card__btn--primary/)
 
     // Visible comment form on the card surface
     await expect(card.getByRole('form', { name: 'Sharh yozish' })).toBeVisible()

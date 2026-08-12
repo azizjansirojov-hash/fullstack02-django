@@ -52,3 +52,4 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+node_modules

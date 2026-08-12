@@ -1,4 +1,4 @@
-import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router'
 import { useEffect, useState } from 'react'
 import { fetchBookReaderManifest } from '../api/library'
 import FlipReaderView from '../components/reader/FlipReaderView'

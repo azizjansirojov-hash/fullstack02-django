@@ -72,8 +72,14 @@ export function useAudioPlayback({
     [manifest.body, normalizedSyncRows],
   )
   const sentenceTotal = syncRows.length || splitSentencesFromBody(manifest.body).length
-  const chapters = manifest.audio_chapters.filter(
-    (chapter): chapter is AudioChapter => Boolean(chapter.url),
+  // Memoize so play/pause/seek state updates do not rebuild this array and
+  // re-trigger the src/load effect (which aborts in-progress playback).
+  const chapters = useMemo(
+    () =>
+      manifest.audio_chapters.filter(
+        (chapter): chapter is AudioChapter => Boolean(chapter.url),
+      ),
+    [manifest.audio_chapters],
   )
 
   const savedProgress = manifest.reading_progress
@@ -156,19 +162,37 @@ export function useAudioPlayback({
       if (!chapter?.url) return
       setChapterIndex(next)
       audio.pause()
-      audio.src = chapter.url
-      audio.load()
       const targetTime = seekTo != null ? seekTo : 0
-      audio.currentTime = targetTime
       setSeekPercent(0)
       updateSentenceFromTime(targetTime)
-      if (autoplayNext) {
-        audio
-          .play()
-          .then(() => setIsPaused(false))
-          .catch(() => setError('Audio ijro etilmadi.'))
+
+      const applySeekAndMaybePlay = () => {
+        try {
+          audio.currentTime = targetTime
+        } catch {
+          /* ignore seek before ready */
+        }
+        if (autoplayNext) {
+          audio
+            .play()
+            .then(() => setIsPaused(false))
+            .catch(() => setError('Audio ijro etilmadi.'))
+        } else {
+          setIsPaused(true)
+        }
+      }
+
+      const absoluteUrl = new URL(chapter.url, window.location.href).href
+      if (audio.src === absoluteUrl && audio.readyState >= 1) {
+        applySeekAndMaybePlay()
       } else {
-        setIsPaused(true)
+        const onReady = () => {
+          audio.removeEventListener('loadedmetadata', onReady)
+          applySeekAndMaybePlay()
+        }
+        audio.addEventListener('loadedmetadata', onReady)
+        audio.src = chapter.url
+        audio.load()
       }
       persistProgress(targetTime, next, { force: true })
     },
@@ -190,17 +214,21 @@ export function useAudioPlayback({
     [sentenceTotal, syncRows, onActiveSentenceChange],
   )
 
+  const initialChapterUrl = chapters[initialChapterIndex]?.url ?? ''
+  const hasSeededSrcRef = useRef(false)
+
   useEffect(() => {
     const audio = audioRef.current
-    if (!audio || !chapters.length) return undefined
-    const chapter = chapters[initialChapterIndex]
-    if (chapter?.url) {
-      audio.src = chapter.url
-      audio.preload = 'metadata'
-      audio.load()
-    }
+    if (!audio || !initialChapterUrl) return undefined
+    // Seed once. Later chapter changes go through goToChapter — never reload
+    // here on play/pause/seek state updates (that aborted playback before).
+    if (hasSeededSrcRef.current) return undefined
+    hasSeededSrcRef.current = true
+    audio.src = initialChapterUrl
+    audio.preload = 'metadata'
+    audio.load()
     return undefined
-  }, [chapters, initialChapterIndex])
+  }, [initialChapterUrl])
 
   useEffect(() => {
     const audio = audioRef.current

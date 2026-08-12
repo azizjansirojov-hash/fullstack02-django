@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { truncateWords } from '../../lib/readerOrigin'
 import type { LibraryBookView } from '../../types/library'
 

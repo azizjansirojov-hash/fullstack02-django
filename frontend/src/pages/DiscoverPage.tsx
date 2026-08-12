@@ -1,11 +1,60 @@
 import { useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/AuthContext'
 import CategoryPills from '../components/library/CategoryPills'
 import NewBooksCarousel from '../components/library/NewBooksCarousel'
 import BookCard from '../components/library/BookCard'
 import ReaderLaunchModal from '../components/library/ReaderLaunchModal'
 import { useCatalog } from '../lib/useCatalog'
+import type { CatalogPagination } from '../types/library'
+
+function buildDiscoverHref(params: {
+  q: string
+  category: string
+  page: number
+}): string {
+  const search = new URLSearchParams()
+  if (params.q) search.set('q', params.q)
+  if (params.category) search.set('category', params.category)
+  if (params.page > 1) search.set('page', String(params.page))
+  const qs = search.toString()
+  return qs ? `/library/dokon?${qs}` : '/library/dokon'
+}
+
+function DiscoverPagination({
+  pagination,
+  q,
+  category,
+}: {
+  pagination: CatalogPagination
+  q: string
+  category: string
+}) {
+  if (pagination.num_pages <= 1) return null
+  return (
+    <nav className="library-pagination" aria-label="Sahifalar">
+      {pagination.has_previous && pagination.previous_page != null ? (
+        <Link
+          to={buildDiscoverHref({ q, category, page: pagination.previous_page })}
+        >
+          Oldingi
+        </Link>
+      ) : (
+        <span aria-hidden="true" />
+      )}
+      <span className="library-pagination__status">
+        {pagination.page} / {pagination.num_pages}
+      </span>
+      {pagination.has_next && pagination.next_page != null ? (
+        <Link to={buildDiscoverHref({ q, category, page: pagination.next_page })}>
+          Keyingi
+        </Link>
+      ) : (
+        <span aria-hidden="true" />
+      )}
+    </nav>
+  )
+}
 
 /**
  * Kutubxona do‘koni — curated discovery (not a paid store).
@@ -20,6 +69,7 @@ export default function DiscoverPage() {
   const {
     catalog,
     error,
+    planError,
     loading,
     launchBook,
     setLaunchBook,
@@ -34,6 +84,7 @@ export default function DiscoverPage() {
   const categories = catalog?.category_lists || []
   const shelf = catalog?.shelf || []
   const featured = categories.filter((c) => c.count > 0).slice(0, 3)
+  const pagination = catalog?.pagination
   const planActions = isAuthenticated
     ? { showPlan: true as const, onPlanToggle: handlePlanToggle }
     : null
@@ -89,6 +140,12 @@ export default function DiscoverPage() {
         </p>
       )}
 
+      {planError ? (
+        <p className="dash-empty" role="alert">
+          {planError}
+        </p>
+      ) : null}
+
       <section className="dash-section" aria-labelledby="discover-ruknlar">
         <div className="dash-section__head">
           <h2 id="discover-ruknlar" className="dash-section__title">
@@ -106,6 +163,9 @@ export default function DiscoverPage() {
             onLaunch={setLaunchBook}
             libraryActions={planActions}
           />
+          {pagination ? (
+            <DiscoverPagination pagination={pagination} q={q} category={category} />
+          ) : null}
         </section>
       ) : (
         <section className="dash-section">
@@ -128,6 +188,9 @@ export default function DiscoverPage() {
           ) : (
             <p className="dash-empty">Hech narsa topilmadi.</p>
           )}
+          {pagination ? (
+            <DiscoverPagination pagination={pagination} q={q} category={category} />
+          ) : null}
         </section>
       )}
 

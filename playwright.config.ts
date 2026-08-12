@@ -54,7 +54,6 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         ...process.env,
-        VITE_REACT_READER_ENABLED: 'true',
       },
     },
   ],

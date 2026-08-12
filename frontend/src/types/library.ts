@@ -37,6 +37,10 @@ export type BookCard = {
   has_audio: boolean
   has_access: boolean
   rights_status: string
+  /** Global catalog price in tiyin when payments enabled; else null. */
+  book_price_tiyin?: number | null
+  /** Licensed + authenticated + no access — show checkout. */
+  is_purchasable?: boolean
   pdf_generation_status: string
   audio_generation_status: string
   pdf_url: string

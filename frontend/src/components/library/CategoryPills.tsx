@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { CatalogCategoryGroup } from '../../types/library'
 
 export type CategoryPillItem = Pick<CatalogCategoryGroup, 'code' | 'label'>

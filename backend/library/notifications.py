@@ -46,3 +46,17 @@ def notify_purchase_paid(purchase):
         message=f'"{title}" xaridingiz tasdiqlandi.',
         link_url=f'/library/{purchase.book.slug}/',
     )
+
+
+def notify_purchase_refunded(purchase):
+    """Notify the purchaser when paid access is revoked after a gateway refund."""
+    from .models import Notification
+
+    title = _book_title(purchase.book)
+    Notification.objects.create(
+        user=purchase.user,
+        book=purchase.book,
+        type=Notification.Type.PURCHASE_REFUNDED,
+        message=f'"{title}" xaridingiz bekor qilindi. Kirish yopildi.',
+        link_url=f'/library/{purchase.book.slug}/',
+    )
