@@ -61,7 +61,7 @@ jobs:
         run: python manage.py migrate --noinput
       - name: Run tests
         # Django discovers test*.py under each app (renamed from *_tests.py).
-        run: python manage.py test library users backend --verbosity=1
+        run: python manage.py test library users payments backend --verbosity=1
 
   e2e:
     name: e2e (Playwright)

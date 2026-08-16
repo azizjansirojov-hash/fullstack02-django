@@ -96,7 +96,7 @@ class CheckoutAPIView(APIView):
             )
 
         try:
-            amount = require_book_price_tiyin()
+            amount = require_book_price_tiyin(book)
         except Exception:
             return Response(
                 {'detail': 'Payment price is not configured.', 'code': 'price_unset'},

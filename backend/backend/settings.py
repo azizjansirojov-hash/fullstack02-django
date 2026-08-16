@@ -210,6 +210,7 @@ REST_FRAMEWORK = {
         # Progress heartbeats (~50s gap) + page turns; blocks rapid-fire abuse.
         'reading_progress': '30/min',
         'payment_checkout': '10/min',
+        'token_refresh': '20/min',
     },
 }
 
@@ -223,6 +224,7 @@ if _E2E_RELAX_THROTTLE and not DEBUG:
     )
 if _E2E_RELAX_THROTTLE and DEBUG:
     REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['auth'] = '1000/min'
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['token_refresh'] = '1000/min'
 
 
 CACHES = {
@@ -250,8 +252,9 @@ elif not DEBUG:
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    # Returning users stay signed in until logout (30 days refresh).
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
+    # Safer default than 30 days. Remember-me (1 day vs 7 day opt-in) is not
+    # implemented in this pass — every login gets a 7-day refresh cookie.
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,

@@ -106,6 +106,15 @@ class Book(models.Model):
         ),
     )
     published_year = models.PositiveSmallIntegerField(blank=True, null=True)
+    price_tiyin = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        default=None,
+        help_text=(
+            'Override catalog price in tiyin (1 UZS = 100 tiyin). '
+            'Leave empty to use the global BOOK_PRICE_TIYIN setting.'
+        ),
+    )
     is_published = models.BooleanField(
         default=False,
         help_text=(

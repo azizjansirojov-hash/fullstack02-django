@@ -4,6 +4,7 @@ import base64
 import json
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -30,6 +31,7 @@ PAYMENTS_ON = dict(
 @override_settings(**PAYMENTS_ON)
 class EntitlementFlowTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(
             username='flow',
             password='testpass123',

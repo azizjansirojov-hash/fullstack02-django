@@ -196,32 +196,3 @@ class MyLibraryAPIView(APIView):
         return Response(payload)
 
 
-def _serialize_similar_books(book, user, *, authenticated=False, limit=4):
-    """Return up to `limit` published books in the same category, excluding `book`."""
-    similar_qs = list(
-        Book.objects.filter(
-            category=book.category,
-            is_published=True,
-        )
-        .exclude(pk=book.pk)
-        .prefetch_related('translations', 'audio_chapters')
-        .order_by('author_name', 'slug')[:limit]
-    )
-    paid_ids = None
-    if authenticated and user is not None:
-        paid_ids = paid_book_ids_for_user(user, [s.pk for s in similar_qs])
-    result = []
-    for similar in similar_qs:
-        translation = similar.get_translation(DISPLAY_LANG)
-        result.append(
-            serialize_book_card(
-                similar,
-                translation,
-                authenticated=authenticated,
-                user=user if authenticated else None,
-                paid_book_ids=paid_ids,
-            )
-        )
-    return result
-
-

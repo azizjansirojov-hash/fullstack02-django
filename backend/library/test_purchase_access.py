@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Book, BookTranslation, Purchase
+from .pdf_watermark import WATERMARK_PREFIX, license_identifier, stamp_pdf_bytes
 from .test_auth_helpers import authenticate_jwt
 
 User = get_user_model()
@@ -100,6 +101,71 @@ class PurchaseMediaAccessTests(TestCase):
         response = self.client.get(self._pdf_url(self.licensed))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def _pdf_body(self, response):
+        if getattr(response, 'streaming', False):
+            return b''.join(response.streaming_content)
+        return response.content
+
+    def test_licensed_pdf_embeds_purchase_identifier(self):
+        Purchase.objects.create(
+            user=self.user,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        authenticate_jwt(self.client, self.user)
+        response = self.client.get(self._pdf_url(self.licensed))
+        self.assertEqual(response.status_code, 200)
+        body = self._pdf_body(response)
+        purchase = Purchase.objects.get(user=self.user, book=self.licensed)
+        marker = license_identifier(user=self.user, purchase=purchase).encode('utf-8')
+        self.assertIn(WATERMARK_PREFIX.encode('utf-8'), body)
+        self.assertIn(marker, body)
+
+    def test_two_purchases_embed_different_identifiers(self):
+        other = User.objects.create_user(
+            username='buyer2',
+            password='testpass123',
+            email='buyer2@example.com',
+        )
+        p1 = Purchase.objects.create(
+            user=self.user,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        p2 = Purchase.objects.create(
+            user=other,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        authenticate_jwt(self.client, self.user)
+        body1 = self._pdf_body(self.client.get(self._pdf_url(self.licensed)))
+        self.client.cookies.clear()
+        authenticate_jwt(self.client, other)
+        body2 = self._pdf_body(self.client.get(self._pdf_url(self.licensed)))
+        id1 = license_identifier(user=self.user, purchase=p1).encode('utf-8')
+        id2 = license_identifier(user=other, purchase=p2).encode('utf-8')
+        self.assertIn(id1, body1)
+        self.assertIn(id2, body2)
+        self.assertNotEqual(id1, id2)
+        self.assertNotIn(id2, body1)
+        self.assertNotIn(id1, body2)
+
+    def test_stamp_appends_after_eof_preserving_startxref(self):
+        payload = b'%PDF-1.4\n1 0 obj<<>>endobj\nstartxref\n9\n%%EOF\n'
+        stamped = stamp_pdf_bytes(payload, 'buyer@example.com|purchase:1')
+        self.assertTrue(stamped.startswith(payload))
+        self.assertIn(b'startxref\n9\n%%EOF', stamped)
+        self.assertIn(WATERMARK_PREFIX.encode('utf-8'), stamped)
+
+    def test_public_domain_pdf_is_not_watermarked(self):
+        authenticate_jwt(self.client, self.user)
+        response = self.client.get(self._pdf_url(self.public))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(WATERMARK_PREFIX.encode('utf-8'), self._pdf_body(response))
 
     def test_public_domain_allows_without_purchase(self):
         authenticate_jwt(self.client, self.user)

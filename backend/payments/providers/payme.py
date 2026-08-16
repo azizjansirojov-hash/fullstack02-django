@@ -86,6 +86,26 @@ def _ms(dt) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _statement_create_time(tx: PaymentTransaction) -> int:
+    meta = tx.raw_payload or {}
+    raw = meta.get('create_time')
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    return _ms(tx.created_at)
+
+
+def _payme_state(tx: PaymentTransaction) -> int:
+    meta = tx.raw_payload or {}
+    if tx.status == PaymentTransaction.Status.PAID:
+        return STATE_COMPLETED
+    if tx.status == PaymentTransaction.Status.CANCELLED:
+        return meta.get('state') or STATE_CANCELLED
+    return STATE_CREATED
+
+
 def _order_id_from_account(account: dict | None) -> str | None:
     if not isinstance(account, dict):
         return None
@@ -427,24 +447,51 @@ class PaymeProvider(PaymentProvider):
         if tx is None:
             return _rpc_error(rpc_id, ERR_TRANSACTION_NOT_FOUND, 'Transaction not found')
         meta = tx.raw_payload or {}
-        if tx.status == PaymentTransaction.Status.PAID:
-            state = STATE_COMPLETED
-        elif tx.status == PaymentTransaction.Status.CANCELLED:
-            state = meta.get('state') or STATE_CANCELLED
-        else:
-            state = STATE_CREATED
         return _rpc_result(
             rpc_id,
             {
-                'create_time': meta.get('create_time') or _ms(tx.created_at),
+                'create_time': _statement_create_time(tx),
                 'perform_time': meta.get('perform_time') or 0,
                 'cancel_time': meta.get('cancel_time') or 0,
                 'transaction': str(tx.id),
-                'state': state,
+                'state': _payme_state(tx),
                 'reason': meta.get('reason'),
             },
         )
 
     def _statement(self, rpc_id, params) -> JsonResponse:
-        # Minimal stub — empty list for the requested window.
-        return _rpc_result(rpc_id, {'transactions': []})
+        try:
+            from_ms = int(params.get('from'))
+            to_ms = int(params.get('to'))
+        except (TypeError, ValueError):
+            return _rpc_result(rpc_id, {'transactions': []})
+
+        rows = (
+            PaymentTransaction.objects.filter(
+                provider=PaymentTransaction.Provider.PAYME,
+            )
+            .exclude(provider_transaction_id='')
+            .select_related('user', 'book')
+        )
+        items = []
+        for tx in rows:
+            create_time = _statement_create_time(tx)
+            if create_time < from_ms or create_time > to_ms:
+                continue
+            meta = tx.raw_payload or {}
+            items.append(
+                {
+                    'id': tx.provider_transaction_id,
+                    'time': create_time,
+                    'amount': tx.amount,
+                    'account': {'order_id': str(tx.id)},
+                    'create_time': create_time,
+                    'perform_time': meta.get('perform_time') or 0,
+                    'cancel_time': meta.get('cancel_time') or 0,
+                    'transaction': str(tx.id),
+                    'state': _payme_state(tx),
+                    'reason': meta.get('reason'),
+                }
+            )
+        items.sort(key=lambda row: (row['time'], row['transaction']))
+        return _rpc_result(rpc_id, {'transactions': items})

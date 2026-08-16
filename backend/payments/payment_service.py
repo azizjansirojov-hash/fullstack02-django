@@ -28,10 +28,22 @@ def payments_enabled() -> bool:
     return bool(getattr(settings, 'PAYMENTS_ENABLED', False))
 
 
-def book_price_tiyin() -> int | None:
-    """Global catalog price in tiyin, or None if unset/disabled."""
+def book_price_tiyin(book=None) -> int | None:
+    """Resolved catalog price in tiyin, or None if unset/disabled.
+
+    When ``book`` is given and ``book.price_tiyin`` is set, that value wins.
+    Otherwise the global ``settings.BOOK_PRICE_TIYIN`` is used.
+    """
     if not payments_enabled():
         return None
+    if book is not None and getattr(book, 'price_tiyin', None) is not None:
+        try:
+            per_book = int(book.price_tiyin)
+        except (TypeError, ValueError):
+            per_book = None
+        else:
+            if per_book > 0:
+                return per_book
     value = getattr(settings, 'BOOK_PRICE_TIYIN', None)
     if value is None:
         return None
@@ -42,8 +54,8 @@ def book_price_tiyin() -> int | None:
     return price if price > 0 else None
 
 
-def require_book_price_tiyin() -> int:
-    price = book_price_tiyin()
+def require_book_price_tiyin(book=None) -> int:
+    price = book_price_tiyin(book)
     if price is None:
         raise ImproperlyConfigured(
             'BOOK_PRICE_TIYIN must be a positive integer when PAYMENTS_ENABLED=True.'

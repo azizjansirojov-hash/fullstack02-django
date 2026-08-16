@@ -294,6 +294,7 @@ class BookAdmin(admin.ModelAdmin):
                     'cover_image',
                     'published_year',
                     'rights_status',
+                    'price_tiyin',
                     'is_published',
                 ),
                 'description': (

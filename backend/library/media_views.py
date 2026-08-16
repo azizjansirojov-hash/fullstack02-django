@@ -1,5 +1,7 @@
 """Authenticated serving of book PDF and audio files."""
 
+from io import BytesIO
+
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -8,7 +10,8 @@ from django.views import View
 from .access import user_can_access_book
 from .auth_access import AuthRequiredMixin
 from .media_streaming import serve_ranged_file
-from .models import AudioChapter, Book
+from .models import AudioChapter, Book, Purchase
+from .pdf_watermark import license_identifier, stamp_pdf_bytes
 
 
 def _published_book(slug):
@@ -35,10 +38,26 @@ class BookPdfMediaView(AuthRequiredMixin, View):
             return _deny_access(request)
         if not book.pdf_file:
             raise Http404('PDF not available.')
+        filename = book.pdf_file.name.split('/')[-1]
+        if book.rights_status != Book.RightsStatus.LICENSED:
+            return FileResponse(
+                book.pdf_file.open('rb'),
+                as_attachment=False,
+                filename=filename,
+                content_type='application/pdf',
+            )
+        purchase = Purchase.objects.filter(
+            user=request.user,
+            book=book,
+            status=Purchase.Status.PAID,
+        ).first()
+        identifier = license_identifier(user=request.user, purchase=purchase)
+        with book.pdf_file.open('rb') as handle:
+            stamped = stamp_pdf_bytes(handle.read(), identifier)
         return FileResponse(
-            book.pdf_file.open('rb'),
+            BytesIO(stamped),
             as_attachment=False,
-            filename=book.pdf_file.name.split('/')[-1],
+            filename=filename,
             content_type='application/pdf',
         )
 

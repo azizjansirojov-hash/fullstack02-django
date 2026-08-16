@@ -72,7 +72,7 @@ def serialize_book_card(
     audio_url = audio_chapters[0]['url'] if audio_chapters and include_urls else ''
     avg = getattr(book, 'avg_rating', None)
     review_total = getattr(book, 'review_total', None)
-    price = book_price_tiyin()
+    price = book_price_tiyin(book)
     is_purchasable = (
         payments_enabled()
         and price is not None
