@@ -139,9 +139,9 @@ Playwright was **not** re-run in this hygiene pass (no E2E/product behavior chan
 | `fe75f50` | docs: add PAYMENTS.md, PROJECT_ANALYSIS.md, and audit index |
 | `f4a43cb` | test: assert token_refresh 429 and GetStatement create_time fallback |
 | `b772815` | fix: resolve pip-audit lockfile path and audit-runner throttles |
-| *(this file)* | docs: add implementation, verification, and hygiene reports |
+| `ff6a116` | docs: add implementation, verification, and hygiene reports |
 
-**Push result:** recorded after `git push origin main` (see below if this paragraph is updated post-push). If this file was committed before push, treat `git status -sb` / `git log --oneline -10` after push as authoritative.
+**Push result:** pending `git push origin main` at the end of this pass. If push is blocked, section 5 and the chat message state the exact reason and commands.
 
 **Working tree at report authoring:** reports still untracked until the reports commit; no media/sqlite/pyc intended.
 
