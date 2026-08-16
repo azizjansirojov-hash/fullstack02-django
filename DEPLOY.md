@@ -59,7 +59,7 @@ Copy from [`backend/.env.example`](backend/.env.example). Do **not** commit real
 | `SPA_ORIGIN` | Absolute SPA origin for emails/redirects in Vite+Django local dev; empty/`same` = relative |
 | `TTS_PROVIDER` | Default `edge` (see `ARCHITECTURE.md` TTS risk) |
 | `PAYMENTS_ENABLED` | `0` until merchant accounts exist; see [`PAYMENTS.md`](PAYMENTS.md) |
-| `BOOK_PRICE_TIYIN` | Required when payments enabled — global price in tiyin |
+| `BOOK_PRICE_TIYIN` | Required when payments enabled — global price in tiyin. Books may override via admin `price_tiyin` (snapshotted at checkout; see [`PAYMENTS.md`](PAYMENTS.md)) |
 | `PAYME_MERCHANT_ID` / `PAYME_MERCHANT_KEY` / `PAYME_TEST_MODE` | Payme credentials (required in prod if payments on) |
 | `CLICK_MERCHANT_ID` / `CLICK_SERVICE_ID` / `CLICK_SECRET_KEY` / `CLICK_TEST_MODE` | Click credentials (required in prod if payments on) |
 | `USE_TLS` | `1` behind HTTPS terminator |
