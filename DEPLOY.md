@@ -61,7 +61,7 @@ Copy from [`backend/.env.example`](backend/.env.example). Do **not** commit real
 | `PAYMENTS_ENABLED` | `0` until merchant accounts exist; see [`PAYMENTS.md`](PAYMENTS.md) |
 | `BOOK_PRICE_TIYIN` | Required when payments enabled — global price in tiyin. Books may override via admin `price_tiyin` (snapshotted at checkout; see [`PAYMENTS.md`](PAYMENTS.md)) |
 | `PAYME_MERCHANT_ID` / `PAYME_MERCHANT_KEY` / `PAYME_TEST_MODE` | Payme credentials (required in prod if payments on) |
-| `CLICK_MERCHANT_ID` / `CLICK_SERVICE_ID` / `CLICK_SECRET_KEY` / `CLICK_TEST_MODE` | Click credentials (required in prod if payments on) |
+| `CLICK_MERCHANT_ID` / `CLICK_SERVICE_ID` / `CLICK_SECRET_KEY` | Click credentials (required in prod if payments on). Checkout always uses `https://my.click.uz/services/pay`; test vs live is the merchant account, not a Django flag. |
 | `USE_TLS` | `1` behind HTTPS terminator |
 
 ### Payment webhook registration
@@ -128,6 +128,8 @@ docker compose --env-file backend/.env \
 ```
 
 See [`deploy/docker-compose.tls.yml`](deploy/docker-compose.tls.yml), [`deploy/nginx.local.conf`](deploy/nginx.local.conf), and [`deploy/nginx.conf`](deploy/nginx.conf). Production should use a real certificate (Let's Encrypt / load balancer), not the self-signed local material.
+
+`client_max_body_size` is **100m** so nginx is not stricter than Django’s audio upload cap (`AUDIO_MAX_BYTES` = 100MB; PDFs cap at 50MB). Hashed SPA files under `/assets/` are served by WhiteNoise (`WHITENOISE_ROOT` = `FRONTEND_DIST`), not `django.views.static.serve`.
 
 ## SMTP / email
 

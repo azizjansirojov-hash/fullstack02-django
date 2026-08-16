@@ -13,8 +13,7 @@ Payme and Click checkout are **implemented** (see `payments/`, `PAYMENTS.md`): `
 - Continue converting residual `.jsx` under `frontend/src` to TypeScript.
 - Real multi-locale catalog copy (if ever needed beyond Uzbek); keep `LANGUAGE_CODE = 'uz'` until then.
 - Roles: Django staff/superuser only — no custom reader/publisher roles (product decision pending).
-- Remember-me login (short vs long refresh TTL). Refresh tokens are a flat 7 days for every session.
-- Visible PDF watermark / overlay merge (licensed downloads currently get an embedded identifier only).
+- Licensed-content protection is attribution-only; full reader `body` JSON remains an entitled-user exfil path. See [`CONTENT_PROTECTION.md`](CONTENT_PROTECTION.md).
 
 ## Recently completed (prior remediation)
 
