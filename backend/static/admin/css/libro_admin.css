@@ -1,0 +1,12 @@
+#changelist table thead th:first-child {
+  width: inherit;
+}
+
+.libro-admin-warn {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.libro-admin-fail {
+  color: #b91c1c;
+}

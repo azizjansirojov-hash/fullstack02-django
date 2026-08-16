@@ -11,6 +11,8 @@ from pathlib import Path
 import environ
 from django.core.exceptions import ImproperlyConfigured
 
+from .security_headers import admin_csp_policy, spa_csp_policy
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
@@ -72,6 +74,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # CSP must sit before WhiteNoise so static responses still get the header.
+    'django.middleware.csp.ContentSecurityPolicyMiddleware',
+    # Sets _csp_config for /admin/ before CSP middleware writes the header.
+    'backend.security_headers.BrowserHardeningMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -141,6 +147,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Argon2 for new hashes; PBKDF2 kept so existing users can still authenticate
+# (Django upgrades the hash on next successful login).
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.ScryptPasswordHasher',
+]
+
 LANGUAGE_CODE = 'uz'
 TIME_ZONE = 'UTC'
 USE_I18N = True
@@ -159,6 +175,10 @@ if FRONTEND_DIST:
     FRONTEND_DIST = Path(FRONTEND_DIST)
     if not FRONTEND_DIST.is_absolute():
         FRONTEND_DIST = (BASE_DIR.parent / FRONTEND_DIST).resolve()
+
+# Serve hashed Vite files (/assets/*) via WhiteNoise instead of django.views.static.serve.
+# HTML routes still go through _spa_index so client-side paths keep Django CSP headers.
+WHITENOISE_ROOT = str(FRONTEND_DIST) if FRONTEND_DIST else None
 
 # When FRONTEND_DIST is set, /library/<slug>/read/ serves the React reader shell.
 # React is the only immersive reader.
@@ -202,7 +222,13 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
     ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
     'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/min',
+        'user': '300/min',
         'auth': '5/min',
         'password_reset': '5/min',
         'rights_report': '5/hour',
@@ -225,6 +251,8 @@ if _E2E_RELAX_THROTTLE and not DEBUG:
 if _E2E_RELAX_THROTTLE and DEBUG:
     REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['auth'] = '1000/min'
     REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['token_refresh'] = '1000/min'
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['anon'] = '1000/min'
+    REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']['user'] = '1000/min'
 
 
 CACHES = {
@@ -252,9 +280,9 @@ elif not DEBUG:
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    # Safer default than 30 days. Remember-me (1 day vs 7 day opt-in) is not
-    # implemented in this pass — every login gets a 7-day refresh cookie.
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    # Default session: 1-day refresh. Login remember_me=true extends to 7 days
+    # (JWT exp + cookie max_age). Rotation preserves the remember_me claim.
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
@@ -337,6 +365,18 @@ else:
     SESSION_COOKIE_SECURE = not DEBUG
     CSRF_COOKIE_SECURE = not DEBUG
 
+# Explicit: Django SecurityMiddleware default is True; keep it visible.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+# Slightly more useful than Django's default same-origin for CDN/font links.
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+X_FRAME_OPTIONS = 'DENY'
+
+# Enforcing CSP (not Report-Only). Django is the source of truth behind nginx.
+# Vite dual-stack HTML uses frontend/vite.config.js headers instead.
+SECURE_CSP = spa_csp_policy()
+SECURE_CSP_REPORT_ONLY = {}
+SECURE_CSP_ADMIN = admin_csp_policy()
+
 # TTS provider: "edge" today; swap via TTS_PROVIDER without rewriting callers.
 TTS_PROVIDER = env('TTS_PROVIDER', default='edge')
 TTS_VOICE = env('TTS_VOICE', default='uz-UZ-MadinaNeural')
@@ -365,7 +405,6 @@ PAYME_TEST_MODE = env.bool('PAYME_TEST_MODE', default=True)
 CLICK_MERCHANT_ID = env('CLICK_MERCHANT_ID', default='')
 CLICK_SERVICE_ID = env('CLICK_SERVICE_ID', default='')
 CLICK_SECRET_KEY = env('CLICK_SECRET_KEY', default='')
-CLICK_TEST_MODE = env.bool('CLICK_TEST_MODE', default=True)
 
 if PAYMENTS_ENABLED:
     if BOOK_PRICE_TIYIN is None:

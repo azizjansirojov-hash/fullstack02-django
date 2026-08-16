@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import './assets/css/fonts.css'
 import './assets/css/auth.css'
 import './assets/css/logo.css'
 import App from './App'

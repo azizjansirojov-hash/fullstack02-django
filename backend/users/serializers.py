@@ -5,21 +5,9 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-User = get_user_model()
+from .disposable_email import is_disposable_email_domain
 
-# Common disposable / throwaway domains — keep short; expand as needed.
-DISPOSABLE_EMAIL_DOMAINS = frozenset(
-    {
-        'mailinator.com',
-        'guerrillamail.com',
-        'guerrillamail.de',
-        '10minutemail.com',
-        'tempmail.com',
-        'yopmail.com',
-        'trashmail.com',
-        'sharklasers.com',
-    }
-)
+User = get_user_model()
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -44,7 +32,7 @@ class RegisterSerializer(serializers.Serializer):
         if not email:
             raise serializers.ValidationError('Email is required.')
         domain = email.rsplit('@', 1)[-1]
-        if domain in DISPOSABLE_EMAIL_DOMAINS:
+        if is_disposable_email_domain(domain):
             raise serializers.ValidationError(
                 'Please use a permanent email address (disposable domains are not allowed).'
             )
@@ -84,6 +72,7 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(trim_whitespace=True)
     password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+    remember_me = serializers.BooleanField(required=False, default=False)
 
     default_error_messages = {
         'invalid_credentials': 'Invalid username or password.',

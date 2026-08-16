@@ -22,7 +22,6 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .auth import clear_jwt_cookies, get_tokens_for_user, set_jwt_cookies
@@ -164,8 +163,9 @@ class LoginAPIView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+        remember_me = bool(serializer.validated_data.get('remember_me'))
 
-        tokens = get_tokens_for_user(user)
+        tokens = get_tokens_for_user(user, remember_me=remember_me)
         redirect_url = _safe_redirect_url(
             request,
             request.data.get('next') or request.query_params.get('next'),
@@ -183,7 +183,7 @@ class LoginAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
-        return set_jwt_cookies(response, tokens)
+        return set_jwt_cookies(response, tokens, remember_me=remember_me)
 
 
 class CookieTokenRefreshAPIView(APIView):
@@ -201,21 +201,34 @@ class CookieTokenRefreshAPIView(APIView):
                 {'detail': 'Refresh token missing.'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-        serializer = TokenRefreshSerializer(data={'refresh': raw_refresh})
         try:
-            serializer.is_valid(raise_exception=True)
-        except Exception:
+            old = RefreshToken(raw_refresh)
+        except TokenError:
             response = Response(
                 {'detail': 'Invalid or expired refresh token.'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
             return clear_jwt_cookies(response)
 
-        access = serializer.validated_data['access']
-        refresh = serializer.validated_data.get('refresh', raw_refresh)
+        remember_me = bool(old.get('rm'))
+        user_id = old.get(settings.SIMPLE_JWT.get('USER_ID_CLAIM', 'user_id'))
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            response = Response(
+                {'detail': 'Invalid or expired refresh token.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            return clear_jwt_cookies(response)
 
+        try:
+            old.blacklist()
+        except TokenError:
+            pass
+
+        tokens = get_tokens_for_user(user, remember_me=remember_me)
         response = Response({'detail': 'Token refreshed.'})
-        return set_jwt_cookies(response, {'access': access, 'refresh': refresh})
+        return set_jwt_cookies(response, tokens, remember_me=remember_me)
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class CsrfAPIView(APIView):

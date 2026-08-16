@@ -1,7 +1,11 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Foydalanish shartlari · Libro.UZ{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'legal/legal.css' %}">
+{% endblock %}
 {% block content %}
-<article class="legal-page" style="max-width:42rem;margin:2rem auto;padding:1rem;line-height:1.6">
+<article class="legal-page">
   <h1>Foydalanish shartlari</h1>
   <p><em>Draft for lawyer review — not final legal advice.</em></p>
   <p>

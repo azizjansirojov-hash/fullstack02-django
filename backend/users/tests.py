@@ -339,3 +339,62 @@ class LoginAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.cookies['access_token']['secure'])
         self.assertTrue(response.cookies['refresh_token']['secure'])
+
+    def test_default_refresh_cookie_is_one_day(self):
+        response = self.client.post(
+            self.url,
+            data={'username': 'bob', 'password': 'Str0ng-Passw0rd!'},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(int(response.cookies['refresh_token']['max-age']), 86400)
+
+    def test_remember_me_refresh_cookie_is_seven_days(self):
+        response = self.client.post(
+            self.url,
+            data={
+                'username': 'bob',
+                'password': 'Str0ng-Passw0rd!',
+                'remember_me': True,
+            },
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(int(response.cookies['refresh_token']['max-age']), 604800)
+        refresh = self.client.post(
+            reverse('users:api-token-refresh'),
+            data={},
+            content_type='application/json',
+        )
+        self.assertEqual(refresh.status_code, 200)
+        self.assertEqual(int(refresh.cookies['refresh_token']['max-age']), 604800)
+
+
+class Argon2HasherTests(TestCase):
+    def test_new_user_uses_argon2(self):
+        user = User.objects.create_user(
+            username='argonuser',
+            email='argon@example.com',
+            password='Str0ng-Passw0rd!',
+        )
+        self.assertTrue(user.password.startswith('argon2'))
+
+    def test_pbkdf2_user_can_login_and_hash_upgrades(self):
+        from django.contrib.auth.hashers import make_password
+
+        user = User.objects.create_user(
+            username='legacyhash',
+            email='legacyhash@example.com',
+            password='Str0ng-Passw0rd!',
+        )
+        user.password = make_password('Str0ng-Passw0rd!', hasher='pbkdf2_sha256')
+        user.save(update_fields=['password'])
+        self.assertTrue(user.password.startswith('pbkdf2_'))
+        response = self.client.post(
+            reverse('users:api-login'),
+            data={'username': 'legacyhash', 'password': 'Str0ng-Passw0rd!'},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.password.startswith('argon2'))
