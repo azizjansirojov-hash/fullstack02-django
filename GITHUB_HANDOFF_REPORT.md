@@ -7,7 +7,7 @@
 
 ## 1. Summary
 
-All previously uncommitted hardening work is on GitHub. Local `main` and `origin/main` both pointed at `54b520ff63ff93d46a6197aa12d926bd8cb81168` after the code/docs push (independently confirmed via `git fetch`, `git rev-parse`, and `git ls-remote origin refs/heads/main`). The working tree was clean at that tip. No live secrets were staged or committed. No remote divergence required merge or rebase; push was a fast-forward `ad6fac3..54b520f`. One hygiene finding remains from **earlier history already on GitHub**: eight `backend/media/` files (including ~30 MB audio tracks and a ~20 MB PDF) are still tracked despite `backend/media/` being gitignored — flagged below, not removed in this pass. This report file itself is committed as a follow-up docs commit after that verified tip.
+All previously uncommitted hardening work is on GitHub. Final tip is `307249edfa392a543cd9755bf8eb01bf2ab46cfe` (`GITHUB_HANDOFF_REPORT.md`); the code/docs tip before this report was `54b520ff63ff93d46a6197aa12d926bd8cb81168`. Local `main` and `origin/main` match (confirmed via `git fetch`, `git rev-parse`, `git ls-remote`, and raw.githubusercontent.com HTTP 200). Working tree clean. No live secrets staged or committed. No remote divergence; pushes were fast-forwards only. Residual flag: eight historical `backend/media/` files remain tracked on GitHub from an earlier commit — not removed in this pass.
 
 ---
 
@@ -98,7 +98,7 @@ Stop-and-report condition: **not triggered**.
 | `df91807` | feat(payments): unique provider_transaction_id and checkout E2E coverage | payments models/migrations/tests/views, `PAYMENTS.md`, `.env.example`, payment-checkout E2E |
 | `2d2aa4b` | feat: close final backlog for SPA perf, media range, and entitlements | WhiteNoise SPA tests/urls, catalog/progress/reviews, PDF stamp/range, validators, frontend lazy load + My Library pagination, requirements lock, related E2E/tests |
 | `54b520f` | docs: add security, content-protection, and final hardening reports | `SECURITY_HARDENING_REPORT.md`, `FINAL_HARDENING_REPORT.md`, `CONTENT_PROTECTION.md`, `DEPLOY.md`, `FOLLOWUP.md` |
-| *(this file)* | docs: add GitHub handoff report | `GITHUB_HANDOFF_REPORT.md` (committed after verification of `54b520f`) |
+| `307249e` | docs: add GitHub handoff report for final main sync | `GITHUB_HANDOFF_REPORT.md` |
 
 Prior passes already on `main` before this handoff (not re-committed): `PROJECT_ANALYSIS.md`, `IMPLEMENTATION_REPORT.md`, `DEBUG_VERIFICATION_REPORT.md`, `REPO_HYGIENE_REPORT.md`, and related feature commits through `ad6fac3`.
 
@@ -111,17 +111,19 @@ Prior passes already on `main` before this handoff (not re-committed): `PROJECT_
 | Remote URL | `https://github.com/azizjansirojov-hash/fullstack02-django.git` (HTTPS; no embedded credentials in `git remote -v`) |
 | Branch | `main` tracking `origin/main` |
 | Pre-push divergence | `origin/main...HEAD` = `0 5` (local ahead by 5 only; nothing on remote not present locally) |
-| Push result | Fast-forward `ad6fac3..54b520f` — exit code 0; **no force-push** |
-| Local HEAD after fetch | `54b520ff63ff93d46a6197aa12d926bd8cb81168` |
-| `origin/main` after fetch | `54b520ff63ff93d46a6197aa12d926bd8cb81168` |
+| Push result (code/docs) | Fast-forward `ad6fac3..54b520f` — exit 0; **no force-push** |
+| Push result (this report) | Fast-forward `54b520f..307249e` — exit 0; **no force-push** |
+| Local HEAD after final fetch | `307249edfa392a543cd9755bf8eb01bf2ab46cfe` |
+| `origin/main` after final fetch | `307249edfa392a543cd9755bf8eb01bf2ab46cfe` |
+| `git ls-remote origin refs/heads/main` | `307249edfa392a543cd9755bf8eb01bf2ab46cfe` |
 | Match | **Yes — identical** |
 | `git rev-list --left-right --count origin/main...HEAD` | `0 0` |
-| `git log --oneline -5` local vs `origin/main` | Identical five subjects/hashes |
+| `git log --oneline -5` local vs `origin/main` | Identical |
 
 **Independent confirmation (beyond push exit code):**
 
-1. `git fetch origin` then re-compare `git rev-parse HEAD` vs `git rev-parse origin/main` — match.
-2. `git ls-remote origin refs/heads/main` → `54b520ff63ff93d46a6197aa12d926bd8cb81168` (fresh remote advertisement, not only the local tracking ref).
+1. `git fetch origin` then re-compare `git rev-parse HEAD` vs `git rev-parse origin/main` — match at `307249e`.
+2. `git ls-remote origin refs/heads/main` → `307249edfa392a543cd9755bf8eb01bf2ab46cfe`.
 3. HTTP HEAD to `raw.githubusercontent.com/.../main/<path>` — **200** for:
    - `FINAL_HARDENING_REPORT.md`
    - `CONTENT_PROTECTION.md`
@@ -130,16 +132,17 @@ Prior passes already on `main` before this handoff (not re-committed): `PROJECT_
    - `IMPLEMENTATION_REPORT.md`
    - `DEBUG_VERIFICATION_REPORT.md`
    - `REPO_HYGIENE_REPORT.md`
+   - `GITHUB_HANDOFF_REPORT.md`
    - `backend/backend/security_headers.py`
-4. GitHub REST API (`/repos/.../commits/main` and `/contents/...`) — **rate-limited** for this IP; not used as evidence. Raw + `ls-remote` used instead.
+4. GitHub REST API — **rate-limited** for this IP; not used as evidence. Raw + `ls-remote` used instead.
 
-**Blocked?** No. Push completed; verification succeeded for tip `54b520f`.
+**Blocked?** No. Both pushes completed; verification succeeded for tip `307249e`.
 
 ---
 
 ## 5. Final repository state
 
-### `git status` (at verified tip `54b520f`, before this report commit)
+### `git status` (final verified tip)
 
 ```text
 On branch main
@@ -148,9 +151,10 @@ Your branch is up to date with 'origin/main'.
 nothing to commit, working tree clean
 ```
 
-### `git log --oneline -10` (local = `origin/main` at `54b520f`)
+### `git log --oneline -10` (local = `origin/main` at `307249e`)
 
 ```text
+307249e docs: add GitHub handoff report for final main sync
 54b520f docs: add security, content-protection, and final hardening reports
 2d2aa4b feat: close final backlog for SPA perf, media range, and entitlements
 df91807 feat(payments): unique provider_transaction_id and checkout E2E coverage
@@ -160,7 +164,6 @@ ad6fac3 docs: record successful GitHub push of hygiene pass
 f64f874 docs: record hygiene pass commit hashes
 ff6a116 docs: add implementation, verification, and hygiene reports
 b772815 fix: resolve pip-audit lockfile path and audit-runner throttles
-f4a43cb test: assert token_refresh 429 and GetStatement create_time fallback
 ```
 
 ### Are 100% of prior-pass reports on GitHub?
@@ -176,7 +179,7 @@ f4a43cb test: assert token_refresh 429 and GetStatement create_time fallback
 | `SECURITY_HARDENING_REPORT.md` | Yes (HTTP 200; this pass) |
 | `FINAL_HARDENING_REPORT.md` | Yes (HTTP 200; this pass) |
 | `CONTENT_PROTECTION.md` | Yes (HTTP 200; this pass) |
-| `GITHUB_HANDOFF_REPORT.md` | Added in the follow-up docs commit after `54b520f` |
+| `GITHUB_HANDOFF_REPORT.md` | Yes (HTTP 200; commit `307249e`) |
 
 ### Residual notes (not blockers for handoff)
 
