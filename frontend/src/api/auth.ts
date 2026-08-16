@@ -21,8 +21,9 @@ export async function fetchMe() {
   return apiFetch<MeResponse>('/api/me/')
 }
 
-export async function login({ username, password, next }: LoginRequest) {
+export async function login({ username, password, remember_me, next }: LoginRequest) {
   const body: LoginRequest = { username, password }
+  if (remember_me) body.remember_me = true
   if (next) body.next = next
   return apiFetch<AuthSessionResponse>('/api/login/', {
     method: 'POST',

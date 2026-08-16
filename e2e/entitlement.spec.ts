@@ -8,8 +8,10 @@ test.describe('entitlement gating', () => {
 
     await page.goto(`/library/${E2E.licensedSlug}/`)
     await expect(page.getByRole('heading', { name: E2E.licensedTitle })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Sotib olish kerak' })).toBeVisible()
-    await expect(page.getByText(/pullik|Purchase|xarid/i).first()).toBeVisible()
+    const purchaseNeeded = page.getByRole('button', { name: 'Sotib olish kerak' })
+    const checkout = page.getByRole('group', { name: 'Kitobni sotib olish' })
+    await expect(purchaseNeeded.or(checkout)).toBeVisible()
+    await expect(page.getByText(/pullik|Purchase|xarid|Payme|sotib/i).first()).toBeVisible()
 
     const manifest = await page.request.get(`/api/library/${E2E.licensedSlug}/reader/`)
     expect(manifest.status()).toBe(403)

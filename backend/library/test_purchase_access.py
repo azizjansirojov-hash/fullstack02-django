@@ -1,13 +1,25 @@
 """Purchase entitlement gating for PDF/audio media and immersive reader."""
 
+from io import BytesIO
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from pypdf import PdfReader, PdfWriter
 
 from .models import Book, BookTranslation, Purchase
-from .pdf_watermark import WATERMARK_PREFIX, license_identifier, stamp_pdf_bytes
+from .pdf_test_utils import sample_pdf_bytes
+from .pdf_watermark import (
+    INFO_KEY,
+    WATERMARK_PREFIX,
+    license_fingerprint,
+    license_identifier,
+    overlay_label,
+    stamp_pdf_bytes,
+)
 from .test_auth_helpers import authenticate_jwt
 
 User = get_user_model()
@@ -30,7 +42,7 @@ class PurchaseMediaAccessTests(TestCase):
             audio_generation_status='ready',
             pdf_file=SimpleUploadedFile(
                 'licensed.pdf',
-                b'%PDF-1.4 licensed',
+                sample_pdf_bytes(title='Licensed sample'),
                 content_type='application/pdf',
             ),
         )
@@ -119,9 +131,12 @@ class PurchaseMediaAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = self._pdf_body(response)
         purchase = Purchase.objects.get(user=self.user, book=self.licensed)
-        marker = license_identifier(user=self.user, purchase=purchase).encode('utf-8')
-        self.assertIn(WATERMARK_PREFIX.encode('utf-8'), body)
-        self.assertIn(marker, body)
+        ident = license_identifier(user=self.user, purchase=purchase)
+        reader = PdfReader(BytesIO(body))
+        extracted = '\n'.join(page.extract_text() or '' for page in reader.pages)
+        self.assertIn(WATERMARK_PREFIX, extracted)
+        self.assertIn(ident, extracted)
+        self.assertEqual(str(reader.metadata[INFO_KEY]), ident)
 
     def test_two_purchases_embed_different_identifiers(self):
         other = User.objects.create_user(
@@ -146,26 +161,130 @@ class PurchaseMediaAccessTests(TestCase):
         self.client.cookies.clear()
         authenticate_jwt(self.client, other)
         body2 = self._pdf_body(self.client.get(self._pdf_url(self.licensed)))
-        id1 = license_identifier(user=self.user, purchase=p1).encode('utf-8')
-        id2 = license_identifier(user=other, purchase=p2).encode('utf-8')
-        self.assertIn(id1, body1)
-        self.assertIn(id2, body2)
+        id1 = license_identifier(user=self.user, purchase=p1)
+        id2 = license_identifier(user=other, purchase=p2)
         self.assertNotEqual(id1, id2)
-        self.assertNotIn(id2, body1)
-        self.assertNotIn(id1, body2)
+        text1 = '\n'.join(
+            page.extract_text() or '' for page in PdfReader(BytesIO(body1)).pages
+        )
+        text2 = '\n'.join(
+            page.extract_text() or '' for page in PdfReader(BytesIO(body2)).pages
+        )
+        self.assertIn(id1, text1)
+        self.assertIn(id2, text2)
+        self.assertNotIn(id2, text1)
+        self.assertNotIn(id1, text2)
+        meta1 = PdfReader(BytesIO(body1)).metadata
+        meta2 = PdfReader(BytesIO(body2)).metadata
+        self.assertEqual(str(meta1[INFO_KEY]), id1)
+        self.assertEqual(str(meta2[INFO_KEY]), id2)
 
-    def test_stamp_appends_after_eof_preserving_startxref(self):
-        payload = b'%PDF-1.4\n1 0 obj<<>>endobj\nstartxref\n9\n%%EOF\n'
-        stamped = stamp_pdf_bytes(payload, 'buyer@example.com|purchase:1')
-        self.assertTrue(stamped.startswith(payload))
-        self.assertIn(b'startxref\n9\n%%EOF', stamped)
-        self.assertIn(WATERMARK_PREFIX.encode('utf-8'), stamped)
+    def test_licensed_pdf_supports_http_range_from_stamp_cache(self):
+        Purchase.objects.create(
+            user=self.user,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        authenticate_jwt(self.client, self.user)
+        full = self.client.get(self._pdf_url(self.licensed))
+        self.assertEqual(full.status_code, 200)
+        full_body = self._pdf_body(full)
+        ranged = self.client.get(
+            self._pdf_url(self.licensed),
+            HTTP_RANGE='bytes=0-10',
+        )
+        self.assertEqual(ranged.status_code, 206)
+        self.assertEqual(ranged['Accept-Ranges'], 'bytes')
+        self.assertEqual(self._pdf_body(ranged), full_body[:11])
+        with patch('library.media_views.stamp_pdf_bytes') as mocked:
+            again = self.client.get(self._pdf_url(self.licensed))
+            self.assertEqual(again.status_code, 200)
+            mocked.assert_not_called()
+
+    def test_stamp_real_pdf_remains_parseable_with_startxref(self):
+        payload = sample_pdf_bytes(title='Parser regression', pages=1)
+        ident = 'buyer@example.com|purchase:1'
+        stamped = stamp_pdf_bytes(payload, ident, stamped_at_iso='2026-08-16T12:00Z')
+        self.assertIn(b'startxref', stamped)
+        self.assertTrue(stamped.rstrip().endswith(b'%%EOF') or b'%%EOF' in stamped[-32:])
+        reader = PdfReader(BytesIO(stamped))
+        self.assertGreaterEqual(len(reader.pages), 1)
+        extracted = reader.pages[0].extract_text() or ''
+        self.assertIn(overlay_label(ident, '2026-08-16T12:00Z'), extracted)
+        self.assertEqual(str(reader.metadata[INFO_KEY]), ident)
+        catalog = reader.trailer['/Root']
+        self.assertEqual(str(catalog['/LibroUZ']['/LicenseId']), ident)
+        self.assertEqual(
+            str(catalog['/LibroUZ']['/LicenseHash']),
+            license_fingerprint(ident),
+        )
+        xmp = reader.xmp_metadata
+        xmp_text = xmp.stream.get_data().decode('utf-8')
+        self.assertIn(ident, xmp_text)
+        self.assertIn(license_fingerprint(ident), xmp_text)
+
+    def test_stamp_preserves_embedded_file_attachment(self):
+        source = PdfWriter()
+        source.append(PdfReader(BytesIO(sample_pdf_bytes(pages=1))))
+        source.add_attachment('license-note.txt', b'keep-me')
+        buf = BytesIO()
+        source.write(buf)
+        stamped = stamp_pdf_bytes(
+            buf.getvalue(),
+            'attach@example.com|purchase:7',
+            stamped_at_iso='2026-08-16T12:00Z',
+        )
+        attached = PdfReader(BytesIO(stamped)).attachments
+        self.assertIn('license-note.txt', attached)
+        blobs = attached['license-note.txt']
+        payload = blobs if isinstance(blobs, (bytes, bytearray)) else blobs[0]
+        self.assertEqual(payload, b'keep-me')
+
+    def test_visible_overlay_is_page_content_not_trailing_comment(self):
+        payload = sample_pdf_bytes(title='Overlay check', pages=2)
+        ident = 'overlay@example.com|purchase:99'
+        stamped = stamp_pdf_bytes(payload, ident, stamped_at_iso='2026-08-16T12:00Z')
+        self.assertFalse(stamped.startswith(payload))
+        reader = PdfReader(BytesIO(stamped))
+        self.assertEqual(len(reader.pages), 2)
+        for page in reader.pages:
+            text = page.extract_text() or ''
+            self.assertIn(WATERMARK_PREFIX, text)
+            self.assertIn(ident, text)
+
+    def test_stamp_not_called_without_purchase_or_when_unpublished(self):
+        authenticate_jwt(self.client, self.user)
+        with patch('library.media_views.stamp_pdf_bytes') as mocked:
+            blocked = self.client.get(
+                self._pdf_url(self.licensed),
+                HTTP_ACCEPT='application/json',
+            )
+            self.assertEqual(blocked.status_code, 403)
+            mocked.assert_not_called()
+
+        Purchase.objects.create(
+            user=self.user,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+            paid_at=timezone.now(),
+        )
+        self.licensed.is_published = False
+        self.licensed.save(update_fields=['is_published'])
+        with patch('library.media_views.stamp_pdf_bytes') as mocked:
+            missing = self.client.get(self._pdf_url(self.licensed))
+            self.assertEqual(missing.status_code, 404)
+            mocked.assert_not_called()
 
     def test_public_domain_pdf_is_not_watermarked(self):
         authenticate_jwt(self.client, self.user)
+        with self.public.pdf_file.open('rb') as handle:
+            original = handle.read()
         response = self.client.get(self._pdf_url(self.public))
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(WATERMARK_PREFIX.encode('utf-8'), self._pdf_body(response))
+        body = self._pdf_body(response)
+        self.assertEqual(body, original)
+        self.assertNotIn(WATERMARK_PREFIX.encode('utf-8'), body)
 
     def test_public_domain_allows_without_purchase(self):
         authenticate_jwt(self.client, self.user)

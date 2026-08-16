@@ -5,6 +5,11 @@ export const E2E = {
     password: 'E2e-Passw0rd!Strong',
     email: 'e2e_owner@example.com',
   },
+  staff: {
+    username: 'e2e_staff',
+    password: 'E2e-Staff-Passw0rd!Strong',
+    email: 'e2e_staff@example.com',
+  },
   pdSlug: 'e2e-public-domain',
   licensedSlug: 'e2e-licensed',
   pdTitle: 'E2E Bepul Kitob',

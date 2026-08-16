@@ -18,6 +18,9 @@ User = get_user_model()
 E2E_OWNER_USERNAME = 'e2e_owner'
 E2E_OWNER_PASSWORD = 'E2e-Passw0rd!Strong'
 E2E_OWNER_EMAIL = 'e2e_owner@example.com'
+E2E_STAFF_USERNAME = 'e2e_staff'
+E2E_STAFF_PASSWORD = 'E2e-Staff-Passw0rd!Strong'
+E2E_STAFF_EMAIL = 'e2e_staff@example.com'
 
 E2E_PD_SLUG = 'e2e-public-domain'
 E2E_LICENSED_SLUG = 'e2e-licensed'
@@ -81,6 +84,16 @@ def seed_e2e_data() -> dict:
     owner.email = E2E_OWNER_EMAIL
     owner.set_password(E2E_OWNER_PASSWORD)
     owner.save()
+
+    staff, _ = User.objects.get_or_create(
+        username=E2E_STAFF_USERNAME,
+        defaults={'email': E2E_STAFF_EMAIL},
+    )
+    staff.email = E2E_STAFF_EMAIL
+    staff.is_staff = True
+    staff.is_superuser = True
+    staff.set_password(E2E_STAFF_PASSWORD)
+    staff.save()
 
     pdf_bytes = _stub_pdf_bytes(3)
     audio_bytes = _stub_audio_bytes()
@@ -168,6 +181,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"seed_e2e ok owner={data['owner'].username} "
+                f"staff={E2E_STAFF_USERNAME} "
                 f"pd={data['pd'].slug} licensed={data['licensed'].slug}"
             )
         )

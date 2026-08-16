@@ -1,4 +1,7 @@
-"""Runtime verification for reader bugs via Playwright."""
+"""Manual Playwright helper for reader-bug debugging — not used by CI or production.
+
+Writes NDJSON to debug-c49e1c.log at the repo root (gitignored via *.log).
+"""
 import json
 import os
 import sys

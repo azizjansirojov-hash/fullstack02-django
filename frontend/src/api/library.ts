@@ -26,9 +26,13 @@ export async function fetchCatalog({
   return apiFetch<CatalogResponse>(`/api/library/${qs ? `?${qs}` : ''}`)
 }
 
-export async function fetchMyLibrary({ status }: { status?: ReadingStatus | string } = {}) {
+export async function fetchMyLibrary({
+  status,
+  page = 1,
+}: { status?: ReadingStatus | string; page?: number } = {}) {
   const params = new URLSearchParams()
   if (status) params.set('status', status)
+  if (page && page !== 1) params.set('page', String(page))
   const qs = params.toString()
   return apiFetch<MyLibraryResponse>(`/api/library/my/${qs ? `?${qs}` : ''}`)
 }

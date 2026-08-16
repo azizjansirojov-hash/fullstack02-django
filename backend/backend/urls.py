@@ -58,7 +58,6 @@ _cover_patterns = [
 ]
 
 if _spa_enabled:
-    dist = Path(_frontend_dist)
     # SPA owns password-reset confirm HTML; keep Django name for reverse()/emails.
     users_urlpatterns = (
         users_api_urlpatterns
@@ -94,11 +93,7 @@ if _spa_enabled:
         path('payment/status/<uuid:transaction_id>/', _spa_index, name='payment-status'),
         path('payment/status/<uuid:transaction_id>', _spa_index),
         *_cover_patterns,
-        re_path(
-            r'^assets/(?P<path>.*)$',
-            serve,
-            {'document_root': str(dist / 'assets')},
-        ),
+        # /assets/* is served by WhiteNoise (WHITENOISE_ROOT = FRONTEND_DIST), not static.serve.
     ]
 else:
     users_urlpatterns = (

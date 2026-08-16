@@ -43,6 +43,15 @@ export default defineConfig({
         E2E_RELAX_THROTTLE: '1',
         DEBUG: 'True',
         SKIP_VITE_AUTOSTART: '1',
+        // Dummy merchant keys for application-level checkout→webhook E2E (not live sandbox).
+        PAYMENTS_ENABLED: process.env.PAYMENTS_ENABLED || '1',
+        BOOK_PRICE_TIYIN: process.env.BOOK_PRICE_TIYIN || '50000',
+        PAYME_MERCHANT_ID: process.env.PAYME_MERCHANT_ID || 'payme-m',
+        PAYME_MERCHANT_KEY: process.env.PAYME_MERCHANT_KEY || 'payme-secret-key',
+        PAYME_TEST_MODE: process.env.PAYME_TEST_MODE || '1',
+        CLICK_MERCHANT_ID: process.env.CLICK_MERCHANT_ID || '11',
+        CLICK_SERVICE_ID: process.env.CLICK_SERVICE_ID || '22',
+        CLICK_SECRET_KEY: process.env.CLICK_SECRET_KEY || 'click-secret',
       },
     },
     {

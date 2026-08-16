@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from users.authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
 
+from ..access import user_can_access_book
 from ..models import Book, Review
 from ..serializers import ReviewSerializer, ReviewWriteSerializer
 from ._common import REVIEW_PAGE_SIZE
@@ -78,8 +79,19 @@ class ReviewAPIView(APIView):
             )
         return Response(payload)
 
+    def _require_access(self, request, book):
+        if not user_can_access_book(request.user, book):
+            return Response(
+                {'detail': 'Purchase required to access this book.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
     def post(self, request, slug):
         book = self._get_published_book(slug)
+        denied = self._require_access(request, book)
+        if denied is not None:
+            return denied
         if Review.objects.filter(user=request.user, book=book).exists():
             return Response(
                 {'detail': 'You already have a review for this book. Use PUT to update it.'},
@@ -108,6 +120,9 @@ class ReviewAPIView(APIView):
 
     def put(self, request, slug):
         book = self._get_published_book(slug)
+        denied = self._require_access(request, book)
+        if denied is not None:
+            return denied
         review = Review.objects.filter(user=request.user, book=book).first()
         if not review:
             return Response(
@@ -129,6 +144,9 @@ class ReviewAPIView(APIView):
 
     def delete(self, request, slug):
         book = self._get_published_book(slug)
+        denied = self._require_access(request, book)
+        if denied is not None:
+            return denied
         review = Review.objects.filter(user=request.user, book=book).first()
         if not review:
             return Response(

@@ -9,6 +9,7 @@ from django.urls import reverse
 from unittest.mock import patch
 
 from .models import Book, BookTranslation, Purchase, ReadingProgress, Review
+from .pdf_test_utils import sample_pdf_bytes
 from .test_auth_helpers import authenticate_jwt
 
 User = get_user_model()
@@ -30,7 +31,7 @@ class LibraryAPITests(TestCase):
             rights_status=Book.RightsStatus.LICENSED,
             pdf_file=SimpleUploadedFile(
                 'sample.pdf',
-                b'%PDF-1.4 sample',
+                sample_pdf_bytes(title='API licensed sample'),
                 content_type='application/pdf',
             ),
             audio_file=SimpleUploadedFile(
@@ -469,8 +470,8 @@ class LibraryAPITests(TestCase):
         data = mine.json()
         self.assertEqual(data['counts']['planned'], 1)
         self.assertEqual(data['counts']['reading'], 0)
-        self.assertEqual(len(data['planned']), 1)
-        self.assertEqual(data['planned'][0]['slug'], self.book.slug)
+        self.assertEqual(len(data['planned']['results']), 1)
+        self.assertEqual(data['planned']['results'][0]['slug'], self.book.slug)
 
         removed = self.client.delete(status_url)
         self.assertEqual(removed.status_code, 200)
@@ -480,7 +481,7 @@ class LibraryAPITests(TestCase):
         )
         after = self.client.get(my_url).json()
         self.assertEqual(after['counts']['planned'], 0)
-        self.assertEqual(after['planned'], [])
+        self.assertEqual(after['planned']['results'], [])
 
     def test_planned_does_not_downgrade_reading(self):
         self._login()
@@ -640,7 +641,7 @@ class LibraryAPITests(TestCase):
         mine = self.client.get(reverse('library_api:my-library')).json()
         self.assertEqual(mine['counts']['planned'], 0)
         self.assertEqual(mine['counts']['reading'], 1)
-        self.assertEqual(mine['planned'], [])
+        self.assertEqual(mine['planned']['results'], [])
 
         # Switch identity — other user only sees their own planned row.
         self._login(other)
@@ -676,6 +677,57 @@ class LibraryAPITests(TestCase):
     def test_my_library_requires_auth(self):
         response = self.client.get(reverse('library_api:my-library'))
         self.assertEqual(response.status_code, 401)
+
+    def test_my_library_paginates_large_status_bucket(self):
+        from library.catalog_context import PAGE_SIZE
+
+        self._login()
+        extra = []
+        for i in range(PAGE_SIZE + 5):
+            book = Book.objects.create(
+                author_name=f'Author {i}',
+                category=Book.Category.NOVEL,
+                slug=f'my-lib-page-{i}',
+                is_published=True,
+                rights_status=Book.RightsStatus.PUBLIC_DOMAIN,
+            )
+            BookTranslation.objects.create(
+                book=book,
+                language=BookTranslation.Language.UZ,
+                title=f'Shelf {i}',
+                summary='s',
+                body='body',
+            )
+            extra.append(book)
+            ReadingProgress.objects.create(
+                user=self.user,
+                book=book,
+                status=ReadingProgress.Status.READING,
+            )
+        page1 = self.client.get(
+            reverse('library_api:my-library'),
+            {'status': 'reading'},
+        ).json()
+        self.assertEqual(page1['counts']['reading'], PAGE_SIZE + 5)
+        self.assertEqual(len(page1['reading']['results']), PAGE_SIZE)
+        self.assertEqual(page1['reading']['pagination']['count'], PAGE_SIZE + 5)
+        self.assertTrue(page1['reading']['pagination']['has_next'])
+        page2 = self.client.get(
+            reverse('library_api:my-library'),
+            {'status': 'reading', 'page': 2},
+        ).json()
+        self.assertEqual(len(page2['reading']['results']), 5)
+        slugs1 = {item['slug'] for item in page1['reading']['results']}
+        slugs2 = {item['slug'] for item in page2['reading']['results']}
+        self.assertFalse(slugs1 & slugs2)
+
+    def test_catalog_search_sqlite_uses_icontains(self):
+        from django.db import connection
+
+        self.assertEqual(connection.vendor, 'sqlite')
+        response = self.client.get(reverse('library_api:catalog'), {'q': 'Lovelace'})
+        slugs = {item['slug'] for item in response.json()['shelf']}
+        self.assertIn(self.book.slug, slugs)
 
 
 class AuthAPIExtraTests(TestCase):
@@ -1246,3 +1298,89 @@ class ReviewAPITests(TestCase):
         self.assertEqual(other.status_code, 200)
         other_texts = [r['text'] for r in other.json()['results']]
         self.assertIn('Foydalanuvchi A sharhi', other_texts)
+
+
+class EntitlementWritePolicyTests(TestCase):
+    """Progress heartbeats and reviews require access; planned wishlist does not."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='nowrite',
+            password='Str0ng-Passw0rd!',
+            email='nowrite@example.com',
+        )
+        self.licensed = Book.objects.create(
+            author_name='Paid Author',
+            category=Book.Category.NOVEL,
+            slug='entitlement-write-book',
+            is_published=True,
+            rights_status=Book.RightsStatus.LICENSED,
+        )
+        BookTranslation.objects.create(
+            book=self.licensed,
+            language=BookTranslation.Language.UZ,
+            title='Pullik',
+            summary='s',
+            body='body',
+        )
+        authenticate_jwt(self.client, self.user)
+
+    def test_progress_put_blocked_without_purchase(self):
+        url = reverse(
+            'library_api:reading-progress', kwargs={'slug': self.licensed.slug}
+        )
+        response = self.client.put(
+            url,
+            data={'mode': 'flip', 'page': 1, 'position': 0},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_review_post_blocked_without_purchase(self):
+        url = reverse(
+            'library_api:book-reviews', kwargs={'slug': self.licensed.slug}
+        )
+        response = self.client.post(
+            url,
+            data={'rating': 5, 'text': 'Nope'},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_planned_status_allowed_without_purchase(self):
+        url = reverse(
+            'library_api:reading-status', kwargs={'slug': self.licensed.slug}
+        )
+        response = self.client.put(
+            url,
+            data={'status': 'planned'},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'planned')
+
+    def test_progress_put_allowed_after_purchase(self):
+        Purchase.objects.create(
+            user=self.user,
+            book=self.licensed,
+            status=Purchase.Status.PAID,
+        )
+        url = reverse(
+            'library_api:reading-progress', kwargs={'slug': self.licensed.slug}
+        )
+        response = self.client.put(
+            url,
+            data={'mode': 'flip', 'page': 1, 'position': 0},
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        review_url = reverse(
+            'library_api:book-reviews', kwargs={'slug': self.licensed.slug}
+        )
+        created = self.client.post(
+            review_url,
+            data={'rating': 4, 'text': 'Ok'},
+            content_type='application/json',
+        )
+        self.assertEqual(created.status_code, 201)
+

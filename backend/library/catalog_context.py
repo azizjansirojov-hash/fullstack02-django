@@ -5,6 +5,7 @@ import logging
 from django.core.cache import cache
 from django.core.cache.backends.base import InvalidCacheBackendError
 from django.core.paginator import Paginator
+from django.db import connection
 from django.db.models import Avg, Count, Prefetch, Q
 
 from .models import Book, BookTranslation
@@ -152,6 +153,34 @@ def build_category_lists(*, use_cache=True):
     return category_lists
 
 
+def apply_catalog_search(books, query):
+    """Ranked full-text search on Postgres; SQLite/dev/CI keep icontains.
+
+    SearchVector/SearchRank need PostgreSQL. Local and CI use SQLite, so those
+    environments keep leading-wildcard substring matching (no index usage).
+    """
+    if connection.vendor == 'postgresql':
+        from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+
+        vector = (
+            SearchVector('author_name', weight='A', config='simple')
+            + SearchVector('translations__title', weight='A', config='simple')
+            + SearchVector('translations__summary', weight='B', config='simple')
+        )
+        search_query = SearchQuery(query, config='simple', search_type='plain')
+        return (
+            books.annotate(search=vector, rank=SearchRank(vector, search_query))
+            .filter(search=search_query)
+            .order_by('-rank', '-created_at', 'author_name', 'slug')
+            .distinct()
+        )
+    return books.filter(
+        Q(author_name__icontains=query)
+        | Q(translations__title__icontains=query)
+        | Q(translations__summary__icontains=query)
+    ).distinct()
+
+
 def build_catalog_context(request):
     """Build search, shelves, and shelf grid context shared by catalog and book pages."""
     query = (request.GET.get('q') or '').strip()
@@ -172,11 +201,7 @@ def build_catalog_context(request):
     )
 
     if query:
-        books = books.filter(
-            Q(author_name__icontains=query)
-            | Q(translations__title__icontains=query)
-            | Q(translations__summary__icontains=query)
-        ).distinct()
+        books = apply_catalog_search(books, query)
 
     if category:
         books = books.filter(category=category)

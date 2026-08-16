@@ -1,27 +1,28 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import RequireAuth from './components/layout/RequireAuth'
 import GuestOnly from './components/layout/GuestOnly'
 import SplashIntro from './components/layout/SplashIntro'
 import DashboardLayout from './components/layout/DashboardLayout'
-import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
-import PasswordResetPage from './pages/PasswordResetPage'
-import PasswordResetConfirmPage from './pages/PasswordResetConfirmPage'
-import HomePage from './pages/HomePage'
-import CollectionsPage from './pages/CollectionsPage'
-import DiscoverPage from './pages/DiscoverPage'
-import MyLibraryPage from './pages/MyLibraryPage'
-import BookDetailPage from './pages/BookDetailPage'
-import ReaderPage from './pages/ReaderPage'
-import PaymentStatusPage from './pages/PaymentStatusPage'
 import {
   INTRO_SEEN_KEY,
   INTRO_SEEN_KEY_LEGACY,
   storageGet,
   storageSet,
 } from './lib/storageKeys'
+
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const PasswordResetPage = lazy(() => import('./pages/PasswordResetPage'))
+const PasswordResetConfirmPage = lazy(() => import('./pages/PasswordResetConfirmPage'))
+const HomePage = lazy(() => import('./pages/HomePage'))
+const CollectionsPage = lazy(() => import('./pages/CollectionsPage'))
+const DiscoverPage = lazy(() => import('./pages/DiscoverPage'))
+const MyLibraryPage = lazy(() => import('./pages/MyLibraryPage'))
+const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
+const ReaderPage = lazy(() => import('./pages/ReaderPage'))
+const PaymentStatusPage = lazy(() => import('./pages/PaymentStatusPage'))
 
 function hasSeenIntro() {
   return storageGet(sessionStorage, INTRO_SEEN_KEY, INTRO_SEEN_KEY_LEGACY) === '1'
@@ -37,6 +38,14 @@ function HomeRedirect() {
   return <Navigate to={isAuthenticated ? '/library' : '/login'} replace />
 }
 
+function PageFallback() {
+  return (
+    <div className="dash-loading" aria-busy="true">
+      Yuklanmoqda…
+    </div>
+  )
+}
+
 function AppRoutes() {
   const [showIntro, setShowIntro] = useState(() => !hasSeenIntro())
 
@@ -48,32 +57,34 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       {showIntro ? <SplashIntro onComplete={handleIntroComplete} /> : null}
-      <Routes>
-        <Route path="/" element={<HomeRedirect />} />
-        <Route element={<GuestOnly />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-        </Route>
-        <Route path="/password-reset" element={<PasswordResetPage />} />
-        <Route path="/password-reset/:uidb64/:token" element={<PasswordResetConfirmPage />} />
-
-        <Route path="/library" element={<DashboardLayout />}>
-          <Route index element={<HomePage />} />
-          <Route path="toplamlar" element={<CollectionsPage />} />
-          <Route path="dokon" element={<DiscoverPage />} />
-          <Route path="mening" element={<MyLibraryPage />} />
-          <Route element={<RequireAuth />}>
-            <Route path=":slug" element={<BookDetailPage />} />
+      <Suspense fallback={<PageFallback />}>
+        <Routes>
+          <Route path="/" element={<HomeRedirect />} />
+          <Route element={<GuestOnly />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
           </Route>
-        </Route>
+          <Route path="/password-reset" element={<PasswordResetPage />} />
+          <Route path="/password-reset/:uidb64/:token" element={<PasswordResetConfirmPage />} />
 
-        <Route element={<RequireAuth />}>
-          <Route path="/library/:slug/read" element={<ReaderPage />} />
-          <Route path="/payment/status/:transactionId" element={<PaymentStatusPage />} />
-        </Route>
+          <Route path="/library" element={<DashboardLayout />}>
+            <Route index element={<HomePage />} />
+            <Route path="toplamlar" element={<CollectionsPage />} />
+            <Route path="dokon" element={<DiscoverPage />} />
+            <Route path="mening" element={<MyLibraryPage />} />
+            <Route element={<RequireAuth />}>
+              <Route path=":slug" element={<BookDetailPage />} />
+            </Route>
+          </Route>
 
-        <Route path="*" element={<HomeRedirect />} />
-      </Routes>
+          <Route element={<RequireAuth />}>
+            <Route path="/library/:slug/read" element={<ReaderPage />} />
+            <Route path="/payment/status/:transactionId" element={<PaymentStatusPage />} />
+          </Route>
+
+          <Route path="*" element={<HomeRedirect />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }
@@ -85,4 +96,3 @@ export default function App() {
     </AuthProvider>
   )
 }
-

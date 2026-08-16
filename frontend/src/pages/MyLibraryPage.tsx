@@ -135,14 +135,28 @@ export default function MyLibraryPage() {
   if (error && !library) return <p className="dash-empty">{error}</p>
 
   const counts = library?.counts || { reading: 0, planned: 0, finished: 0 }
-  const reading = library?.reading || []
-  const planned = library?.planned || []
-  const finished = library?.finished || []
+  const reading = library?.reading.results || []
   const canRead = Boolean(library?.can_read ?? true)
   const continueHero = reading[0] || null
+  const activeBucket =
+    tab === 'planned' ? library?.planned : tab === 'finished' ? library?.finished : library?.reading
+  const tabBooks = activeBucket?.results || []
+  const hasNextPage = Boolean(activeBucket?.pagination.has_next)
 
-  const tabBooks =
-    tab === 'planned' ? planned : tab === 'finished' ? finished : reading
+  async function loadMore() {
+    if (!activeBucket?.pagination.has_next) return
+    const nextPage = (activeBucket.pagination.page || 1) + 1
+    const { response, data } = await fetchMyLibrary({ status: tab, page: nextPage })
+    if (!response.ok || !data || !library) return
+    const extra = data[tab]
+    setLibrary({
+      ...library,
+      [tab]: {
+        results: [...library[tab].results, ...extra.results],
+        pagination: extra.pagination,
+      },
+    })
+  }
 
   const libraryActions =
     tab === 'planned'
@@ -188,18 +202,25 @@ export default function MyLibraryPage() {
       </div>
 
       {tabBooks.length ? (
-        <ul className={`reading-grid${busySlug ? ' is-busy' : ''}`}>
-          {tabBooks.map((book, index) => (
-            <BookCard
-              key={book.slug}
-              book={book}
-              canRead={canRead}
-              index={index}
-              onLaunch={setLaunchBook}
-              libraryActions={libraryActions}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className={`reading-grid${busySlug ? ' is-busy' : ''}`}>
+            {tabBooks.map((book, index) => (
+              <BookCard
+                key={book.slug}
+                book={book}
+                canRead={canRead}
+                index={index}
+                onLaunch={setLaunchBook}
+                libraryActions={libraryActions}
+              />
+            ))}
+          </ul>
+          {hasNextPage ? (
+            <button type="button" className="library-empty__cta" onClick={() => void loadMore()}>
+              Yana yuklash
+            </button>
+          ) : null}
+        </>
       ) : (
         <LibraryTabEmpty tab={tab} />
       )}

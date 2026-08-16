@@ -117,10 +117,16 @@ export type CatalogCategoryGroup = {
 export type CatalogPagination = {
   page: number
   num_pages: number
+  count?: number
   has_previous: boolean
   has_next: boolean
   previous_page: number | null
   next_page: number | null
+}
+
+export type PaginatedProgressList = {
+  results: ProgressCard[]
+  pagination: CatalogPagination
 }
 
 export type CatalogUser = {
@@ -172,9 +178,9 @@ export type MyLibraryResponse = {
     finished: number
   }
   can_read: boolean
-  reading: ProgressCard[]
-  planned: ProgressCard[]
-  finished: ProgressCard[]
+  reading: PaginatedProgressList
+  planned: PaginatedProgressList
+  finished: PaginatedProgressList
 }
 
 /** A single user review. */

@@ -5,7 +5,12 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from .models import Book
-from .validators import COVER_MAX_BYTES, cover_image_validators, pdf_file_validators
+from .validators import (
+    COVER_MAX_BYTES,
+    audio_file_validators,
+    cover_image_validators,
+    pdf_file_validators,
+)
 
 
 def _tiny_png():
@@ -61,6 +66,34 @@ class UploadValidatorTests(TestCase):
         )
         for validator in pdf_file_validators:
             validator(good)
+
+    def test_audio_rejects_renamed_non_audio(self):
+        fake = SimpleUploadedFile(
+            'song.mp3',
+            b'%PDF-1.4 not-audio',
+            content_type='audio/mpeg',
+        )
+        with self.assertRaises(ValidationError):
+            for validator in audio_file_validators:
+                validator(fake)
+
+    def test_audio_accepts_real_wav(self):
+        import io
+        import wave
+
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(8000)
+            handle.writeframes(b'\x00\x00' * 256)
+        upload = SimpleUploadedFile(
+            'ok.wav',
+            buf.getvalue(),
+            content_type='audio/wav',
+        )
+        for validator in audio_file_validators:
+            validator(upload)
 
     def test_book_full_clean_rejects_bad_cover(self):
         book = Book(

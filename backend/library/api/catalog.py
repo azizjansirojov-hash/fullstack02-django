@@ -1,5 +1,6 @@
 """Catalog and my-library API views."""
 
+from django.core.paginator import Paginator
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -9,7 +10,7 @@ from users.authentication import JWTCookieAuthentication
 
 from ..access import paid_book_ids_for_user
 from ..activity import serialize_activity_stats
-from ..catalog_context import build_catalog_context
+from ..catalog_context import PAGE_SIZE, build_catalog_context
 from ..models import ReadingProgress
 from ._common import (
     category_label_uz,
@@ -144,8 +145,27 @@ def _card_with_status(
     return card
 
 
+def _pagination_payload(page):
+    paginator = page.paginator
+    return {
+        'page': page.number,
+        'num_pages': paginator.num_pages,
+        'count': paginator.count,
+        'has_previous': page.has_previous(),
+        'has_next': page.has_next(),
+        'previous_page': page.previous_page_number() if page.has_previous() else None,
+        'next_page': page.next_page_number() if page.has_next() else None,
+    }
+
+
+def _empty_progress_page(page_number=1):
+    paginator = Paginator([], PAGE_SIZE)
+    page = paginator.get_page(page_number)
+    return {'results': [], 'pagination': _pagination_payload(page)}
+
+
 class MyLibraryAPIView(APIView):
-    """Authenticated shelf lists grouped by reading status."""
+    """Authenticated shelf lists grouped by reading status (paginated per bucket)."""
 
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTCookieAuthentication]
@@ -160,6 +180,7 @@ class MyLibraryAPIView(APIView):
             )
 
         counts = status_counts_for_user(request.user)
+        page_number = request.query_params.get('page') or 1
         payload = {
             'counts': {
                 'reading': counts[ReadingProgress.Status.READING],
@@ -167,31 +188,36 @@ class MyLibraryAPIView(APIView):
                 'finished': counts[ReadingProgress.Status.FINISHED],
             },
             'can_read': True,
-            'reading': [],
-            'planned': [],
-            'finished': [],
+            'reading': _empty_progress_page(page_number),
+            'planned': _empty_progress_page(page_number),
+            'finished': _empty_progress_page(page_number),
         }
 
         statuses_to_load = (
             [filter_status] if filter_status else list(ReadingProgress.Status.values)
         )
-        rows_by_status = {
-            status_value: list(progress_queryset_for_user(request.user, status_value))
+        querysets = {
+            status_value: progress_queryset_for_user(request.user, status_value)
             for status_value in statuses_to_load
         }
-        all_book_ids = [
-            row.book_id
-            for rows in rows_by_status.values()
-            for row in rows
-        ]
+        pages = {}
+        all_book_ids = []
+        for status_value, queryset in querysets.items():
+            paginator = Paginator(queryset, PAGE_SIZE)
+            page = paginator.get_page(page_number)
+            pages[status_value] = page
+            all_book_ids.extend(row.book_id for row in page.object_list)
         paid_ids = paid_book_ids_for_user(request.user, all_book_ids)
-        for status_value, rows in rows_by_status.items():
-            payload[status_value] = [
-                serialize_progress_card(
-                    row, user=request.user, paid_book_ids=paid_ids
-                )
-                for row in rows
-            ]
+        for status_value, page in pages.items():
+            payload[status_value] = {
+                'results': [
+                    serialize_progress_card(
+                        row, user=request.user, paid_book_ids=paid_ids
+                    )
+                    for row in page.object_list
+                ],
+                'pagination': _pagination_payload(page),
+            }
 
         return Response(payload)
 

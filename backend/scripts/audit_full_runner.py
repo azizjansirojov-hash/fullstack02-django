@@ -26,6 +26,8 @@ from django.core.cache import cache
 settings.REST_FRAMEWORK = {
     **settings.REST_FRAMEWORK,
     'DEFAULT_THROTTLE_RATES': {
+        'anon': '10000/min',
+        'user': '10000/min',
         'auth': '10000/min',
         'password_reset': '10000/min',
         'rights_report': '10000/hour',
@@ -99,7 +101,13 @@ def ensure_fixtures():
         book.pdf_generation_status = 'ready'
         book.audio_generation_status = 'ready'
         if not book.pdf_file:
-            book.pdf_file.save(f'{slug}.pdf', ContentFile(b'%PDF-1.4 audit\n'), save=False)
+            from library.pdf_test_utils import sample_pdf_bytes
+
+            book.pdf_file.save(
+                f'{slug}.pdf',
+                ContentFile(sample_pdf_bytes(title=f'Audit {slug}')),
+                save=False,
+            )
         if not book.cover_image:
             book.cover_image.save(f'{slug}.png', ContentFile(tiny_png()), save=False)
         book.save()

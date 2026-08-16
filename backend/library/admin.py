@@ -198,7 +198,7 @@ class GenerationJobAdmin(admin.ModelAdmin):
         seconds = getattr(settings, 'GENERATION_STALE_QUEUED_SECONDS', 300)
         if obj.created_at < timezone.now() - timedelta(seconds=seconds):
             return mark_safe(
-                '<span style="color:#b91c1c;font-weight:600">'
+                '<span class="libro-admin-warn">'
                 'STALE — worker likely not running</span>'
             )
         return 'queued (waiting for worker)'
@@ -353,7 +353,7 @@ class BookAdmin(admin.ModelAdmin):
         if summary['stale']:
             parts.append(
                 mark_safe(
-                    '<span style="color:#b91c1c;font-weight:600">'
+                    '<span class="libro-admin-warn">'
                     'STALE QUEUE — start process_generation_jobs worker</span>'
                 )
             )
@@ -365,7 +365,7 @@ class BookAdmin(admin.ModelAdmin):
             err = (summary['last_failed'].error_message or 'failed')[:120]
             parts.append(
                 format_html(
-                    '<span style="color:#b91c1c">last failure: {}</span>',
+                    '<span class="libro-admin-fail">last failure: {}</span>',
                     err,
                 )
             )

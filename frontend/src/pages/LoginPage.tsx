@@ -24,6 +24,7 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [alert, setAlert] = useState<AlertState | null>(null)
@@ -37,7 +38,12 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const { response, data } = await login({ username, password, next: next || undefined })
+      const { response, data } = await login({
+        username,
+        password,
+        remember_me: rememberMe,
+        next: next || undefined,
+      })
 
       if (response.ok) {
         setSuccessUser(data?.user?.username || username)
@@ -217,6 +223,19 @@ export default function LoginPage() {
                   <p id="password-error" className="field__error" hidden={!fieldErrors.password}>
                     {fieldErrors.password || ''}
                   </p>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="id_remember_me">
+                    <input
+                      type="checkbox"
+                      id="id_remember_me"
+                      name="remember_me"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                    />{' '}
+                    Tizimda qoling (7 kun)
+                  </label>
                 </div>
 
                 <button type="submit" className="primary-button" disabled={loading}>

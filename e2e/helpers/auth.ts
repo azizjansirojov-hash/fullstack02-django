@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import { E2E } from '../fixtures'
 
-async function csrfHeaders(page: Page): Promise<Record<string, string>> {
+export async function csrfHeaders(page: Page): Promise<Record<string, string>> {
   await page.request.get('/api/csrf/')
   const cookies = await page.context().cookies()
   const token = cookies.find((c) => c.name === 'csrftoken')?.value || ''

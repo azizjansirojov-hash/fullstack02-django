@@ -150,3 +150,61 @@ class AudioMediaRangeTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._body(response), AUDIO_BYTES)
+
+
+PDF_BYTES = b'%PDF-1.4 public-domain-range-fixture'
+
+
+class PublicDomainPdfRangeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='pdfrange',
+            password='Str0ng-Passw0rd!',
+            email='pdfrange@example.com',
+        )
+        self.book = Book.objects.create(
+            author_name='Public Range',
+            category=Book.Category.HISTORY,
+            slug='public-pdf-range',
+            is_published=True,
+            rights_status=Book.RightsStatus.PUBLIC_DOMAIN,
+            pdf_file=SimpleUploadedFile(
+                'public.pdf',
+                PDF_BYTES,
+                content_type='application/pdf',
+            ),
+        )
+        BookTranslation.objects.create(
+            book=self.book,
+            language=BookTranslation.Language.UZ,
+            title='Public range',
+            body='Matn.',
+        )
+
+    def _login(self):
+        tokens = get_tokens_for_user(self.user)
+        self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = tokens['access']
+        self.client.cookies[settings.JWT_REFRESH_COOKIE_NAME] = tokens['refresh']
+
+    def _pdf_url(self):
+        return reverse('library:book-media-pdf', kwargs={'slug': self.book.slug})
+
+    def _body(self, response):
+        if hasattr(response, 'streaming_content'):
+            return b''.join(response.streaming_content)
+        return response.content
+
+    def test_public_domain_pdf_range(self):
+        self._login()
+        response = self.client.get(self._pdf_url(), HTTP_RANGE='bytes=0-10')
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(response['Accept-Ranges'], 'bytes')
+        self.assertEqual(response['Content-Range'], f'bytes 0-10/{len(PDF_BYTES)}')
+        self.assertEqual(self._body(response), PDF_BYTES[:11])
+
+    def test_public_domain_pdf_full_body_unchanged(self):
+        self._login()
+        response = self.client.get(self._pdf_url())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._body(response), PDF_BYTES)
+

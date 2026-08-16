@@ -324,9 +324,12 @@ class GenerationJobConcurrentEnqueueTests(TransactionTestCase):
 
         if connection.vendor == 'sqlite':
             self.skipTest(
-                'SQLite serializes writers (database is locked); '
-                'constraint coverage is in GenerationJobUniquenessTests. '
-                'Run this race on Postgres.'
+                'Requires Postgres row-level locking (SELECT FOR UPDATE). '
+                'SQLite serializes writers with "database is locked", so this '
+                'race cannot be reproduced reliably here. Uniqueness is still '
+                'covered by GenerationJobUniquenessTests. To run this test: '
+                'DATABASE_URL=postgres://... python manage.py test '
+                'library.test_generation.GenerationJobConcurrentEnqueueTests'
             )
 
         book = Book.objects.create(

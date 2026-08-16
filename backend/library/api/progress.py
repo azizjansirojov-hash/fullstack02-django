@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from users.authentication import CSRFEnforcedAuthentication, JWTCookieAuthentication
 
+from ..access import user_can_access_book
 from ..activity import record_reading_session
 from ..models import Book, ReadingProgress
 from ..serializers import ProgressUpsertSerializer
@@ -48,6 +49,11 @@ class ReadingProgressAPIView(APIView):
 
     def _upsert(self, request, slug):
         book = get_object_or_404(Book, slug=slug, is_published=True)
+        if not user_can_access_book(request.user, book):
+            return Response(
+                {'detail': 'Purchase required to access this book.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = ProgressUpsertSerializer(data=request.data)
         if not serializer.is_valid():
             if 'status' in serializer.errors:
@@ -161,6 +167,15 @@ class ReadingStatusAPIView(APIView):
             return Response(
                 {'detail': 'Invalid status. Use planned, reading, or finished.'},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Wishlist (planned) is allowed without entitlement. Reading/finished
+        # writes require access so unpaid users cannot fake a reading history.
+        if new_status != ReadingProgress.Status.PLANNED and not user_can_access_book(
+            request.user, book
+        ):
+            return Response(
+                {'detail': 'Purchase required to access this book.'},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         progress = ReadingProgress.objects.filter(user=request.user, book=book).first()

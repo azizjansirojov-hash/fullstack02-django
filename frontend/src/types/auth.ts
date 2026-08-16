@@ -17,6 +17,7 @@ export type MeResponse =
 export type LoginRequest = {
   username: string
   password: string
+  remember_me?: boolean
   next?: string
 }
 

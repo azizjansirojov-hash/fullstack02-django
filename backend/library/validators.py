@@ -91,6 +91,39 @@ class PdfContentValidator:
         return isinstance(other, PdfContentValidator)
 
 
+@deconstructible
+class AudioContentValidator:
+    """Parse audio structure (mutagen), not just the file extension."""
+
+    message = 'Upload a valid audio file (MP3, M4A, OGG, or WAV).'
+    code = 'invalid_audio_content'
+
+    def __call__(self, value):
+        from io import BytesIO
+
+        from mutagen import File as MutagenFile
+
+        try:
+            value.seek(0)
+            payload = value.read()
+        except Exception as exc:
+            raise ValidationError(self.message, code=self.code) from exc
+        finally:
+            try:
+                value.seek(0)
+            except Exception:
+                pass
+        try:
+            parsed = MutagenFile(BytesIO(payload))
+        except Exception as exc:
+            raise ValidationError(self.message, code=self.code) from exc
+        if parsed is None or getattr(parsed, 'info', None) is None:
+            raise ValidationError(self.message, code=self.code)
+
+    def __eq__(self, other):
+        return isinstance(other, AudioContentValidator)
+
+
 COVER_MAX_BYTES = 5 * 1024 * 1024
 PDF_MAX_BYTES = 50 * 1024 * 1024
 AUDIO_MAX_BYTES = 100 * 1024 * 1024
@@ -110,4 +143,5 @@ pdf_file_validators = [
 audio_file_validators = [
     FileExtensionValidator(allowed_extensions=['mp3', 'm4a', 'ogg', 'wav']),
     MaxFileSizeValidator(AUDIO_MAX_BYTES),
+    AudioContentValidator(),
 ]
