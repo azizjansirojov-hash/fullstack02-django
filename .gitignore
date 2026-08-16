@@ -25,6 +25,14 @@ backend/db.sqlite3-shm
 backend/staticfiles/
 backend/media/
 *.log
+logs/
+
+# Test / coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Local DB dumps / operator backups (never commit)
 backups/
@@ -47,9 +55,10 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 
-# OS / IDE
+# OS / IDE / local agent
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+.cursor/
 node_modules
