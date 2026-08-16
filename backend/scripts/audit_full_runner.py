@@ -31,6 +31,8 @@ settings.REST_FRAMEWORK = {
         'rights_report': '10000/hour',
         'review_write': '10000/min',
         'reading_progress': '10000/min',
+        'payment_checkout': '10000/min',
+        'token_refresh': '10000/min',
     },
 }
 cache.clear()

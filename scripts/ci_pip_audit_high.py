@@ -13,8 +13,10 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
-LOCKFILE = 'requirements.lock.txt'
+REPO_ROOT = Path(__file__).resolve().parent.parent
+LOCKFILE = str(REPO_ROOT / 'requirements.lock.txt')
 OSV_VULN = 'https://api.osv.dev/v1/vulns/{id}'
 BLOCK_LABELS = {'HIGH', 'CRITICAL'}
 
