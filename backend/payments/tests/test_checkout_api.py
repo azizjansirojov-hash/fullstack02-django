@@ -1,6 +1,10 @@
 """Checkout API and purchasability rules."""
 
+import base64
+import json
+
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -25,6 +29,7 @@ PAYMENTS_ON = dict(
 @override_settings(**PAYMENTS_ON)
 class CheckoutAPITests(TestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(
             username='payer',
             password='testpass123',
@@ -131,3 +136,52 @@ class CheckoutAPITests(TestCase):
     def test_disabled_returns_503(self):
         response = self._checkout('licensed-for-sale')
         self.assertEqual(response.status_code, 503)
+
+    def test_custom_book_price_used_at_checkout(self):
+        Book.objects.filter(pk=self.licensed.pk).update(price_tiyin=250_000)
+        self.licensed.refresh_from_db()
+        response = self._checkout('licensed-for-sale', 'payme')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['amount_tiyin'], 250_000)
+        tx = PaymentTransaction.objects.get(pk=response.json()['transaction_id'])
+        self.assertEqual(tx.amount, 250_000)
+
+    def test_missing_custom_price_falls_back_to_global(self):
+        self.assertIsNone(self.licensed.price_tiyin)
+        response = self._checkout('licensed-for-sale', 'payme')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['amount_tiyin'], 100_000)
+        tx = PaymentTransaction.objects.get(pk=response.json()['transaction_id'])
+        self.assertEqual(tx.amount, 100_000)
+
+    def test_check_perform_uses_snapshotted_amount_after_price_change(self):
+        Book.objects.filter(pk=self.licensed.pk).update(price_tiyin=250_000)
+        checkout = self._checkout('licensed-for-sale', 'payme')
+        self.assertEqual(checkout.status_code, 200, checkout.content)
+        tx_id = checkout.json()['transaction_id']
+        Book.objects.filter(pk=self.licensed.pk).update(price_tiyin=999_000)
+        snap = PaymentTransaction.objects.get(pk=tx_id).amount
+        token = base64.b64encode(b'Paycom:payme-key').decode('ascii')
+
+        def check_perform(amount):
+            return self.client.post(
+                reverse('payments:payme-webhook'),
+                data=json.dumps(
+                    {
+                        'id': 1,
+                        'method': 'CheckPerformTransaction',
+                        'params': {
+                            'amount': amount,
+                            'account': {'order_id': tx_id},
+                        },
+                    }
+                ),
+                content_type='application/json',
+                HTTP_AUTHORIZATION=f'Basic {token}',
+            )
+
+        new_price = check_perform(999_000)
+        snap_ok = check_perform(snap)
+        self.assertEqual(snap, 250_000)
+        self.assertEqual(new_price.json()['error']['code'], -31001)
+        self.assertEqual(snap_ok.json().get('result'), {'allow': True})

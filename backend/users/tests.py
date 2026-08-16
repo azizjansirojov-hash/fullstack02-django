@@ -221,6 +221,46 @@ class PasswordResetConfirmThrottleTests(TestCase):
         self.assertIn(ScopedRateThrottle, PasswordResetConfirmAPIView.throttle_classes)
 
 
+class CookieTokenRefreshThrottleTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            username='refresh_throttle',
+            email='refresh_throttle@example.com',
+            password='Str0ng-Passw0rd!',
+        )
+
+    def test_refresh_view_has_token_refresh_throttle(self):
+        from rest_framework.throttling import ScopedRateThrottle
+
+        from users.views import CookieTokenRefreshAPIView
+
+        self.assertEqual(
+            CookieTokenRefreshAPIView.throttle_scope,
+            'token_refresh',
+        )
+        self.assertIn(ScopedRateThrottle, CookieTokenRefreshAPIView.throttle_classes)
+
+    def test_21st_refresh_returns_429(self):
+        login = self.client.post(
+            reverse('users:api-login'),
+            data={
+                'username': 'refresh_throttle',
+                'password': 'Str0ng-Passw0rd!',
+            },
+            content_type='application/json',
+        )
+        self.assertEqual(login.status_code, 200)
+        url = reverse('users:api-token-refresh')
+        statuses = []
+        for _ in range(21):
+            statuses.append(
+                self.client.post(url, data={}, content_type='application/json').status_code
+            )
+        self.assertEqual(statuses[:20], [200] * 20, statuses)
+        self.assertEqual(statuses[20], 429, statuses)
+
+
 class LoginAPITests(TestCase):
     def setUp(self):
         cache.clear()
