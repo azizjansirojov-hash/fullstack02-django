@@ -117,7 +117,11 @@ class CheckoutAPIView(APIView):
                 .first()
             )
             if active is not None:
-                # Reuse pending/created checkout; refresh provider if requested.
+                # Intentional price freeze: reuse the existing created/pending row
+                # and keep active.amount. Do not re-price from book_price_tiyin here.
+                # A catalog price change after the first checkout attempt must not
+                # mutate an in-flight Payme/Click amount (CheckPerform compares the
+                # snapshot). Product may later choose to cancel+recreate instead.
                 if active.provider != provider_name:
                     active.provider = provider_name
                     active.save(update_fields=['provider', 'updated_at'])

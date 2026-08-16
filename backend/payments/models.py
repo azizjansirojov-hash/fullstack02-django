@@ -46,7 +46,11 @@ class PaymentTransaction(models.Model):
         help_text='Gateway-side transaction id once the provider creates it.',
     )
     amount = models.PositiveIntegerField(
-        help_text='Amount in tiyin (UZS minor units), snapshotted at checkout.',
+        help_text=(
+            'Amount in tiyin (UZS minor units), snapshotted at checkout. '
+            'Intentional: reused created/pending rows keep this amount even if '
+            'Book.price_tiyin or BOOK_PRICE_TIYIN changes later (not live-priced).'
+        ),
     )
     status = models.CharField(
         max_length=16,
@@ -61,6 +65,12 @@ class PaymentTransaction(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['provider', 'provider_transaction_id'],
+                name='pay_tx_provider_ptid_idx',
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=['user', 'book'],
@@ -69,11 +79,10 @@ class PaymentTransaction(models.Model):
                 ),
                 name='uniq_active_payment_per_user_book',
             ),
-        ]
-        indexes = [
-            models.Index(
+            models.UniqueConstraint(
                 fields=['provider', 'provider_transaction_id'],
-                name='pay_tx_provider_ptid_idx',
+                condition=~models.Q(provider_transaction_id=''),
+                name='uniq_provider_transaction_id',
             ),
         ]
 

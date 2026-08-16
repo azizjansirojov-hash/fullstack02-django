@@ -16,11 +16,10 @@ Payments stay **off** until merchant accounts exist (`PAYMENTS_ENABLED=0` in [`b
 | `CLICK_MERCHANT_ID` | Click merchant id. |
 | `CLICK_SERVICE_ID` | Click service id. |
 | `CLICK_SECRET_KEY` | Click MD5 signature secret. |
-| `CLICK_TEST_MODE` | Loaded (default `True`) but **unused** by `ClickProvider` — checkout always uses `https://my.click.uz/services/pay`. |
 
 When `PAYMENTS_ENABLED=True` and `BOOK_PRICE_TIYIN` is missing or not a positive integer, Django raises `ImproperlyConfigured` (see `backend/.env.example` and this file).
 
-When `PAYMENTS_ENABLED=True` and `DEBUG=False`, all five merchant fields must be non-empty: `PAYME_MERCHANT_ID`, `PAYME_MERCHANT_KEY`, `CLICK_MERCHANT_ID`, `CLICK_SERVICE_ID`, `CLICK_SECRET_KEY`. `PAYME_TEST_MODE` / `CLICK_TEST_MODE` are **not** in that production required list. See also [`DEPLOY.md`](DEPLOY.md).
+When `PAYMENTS_ENABLED=True` and `DEBUG=False`, all five merchant fields must be non-empty: `PAYME_MERCHANT_ID`, `PAYME_MERCHANT_KEY`, `CLICK_MERCHANT_ID`, `CLICK_SERVICE_ID`, `CLICK_SECRET_KEY`. `PAYME_TEST_MODE` is **not** in that production required list. See also [`DEPLOY.md`](DEPLOY.md).
 
 ## Pricing (`price_tiyin`)
 
@@ -124,10 +123,60 @@ Admin can still mark a `Purchase` paid as a manual override ([`FOLLOWUP.md`](FOL
 ## Sandbox, certification, and tests
 
 - Leave `PAYME_TEST_MODE=1` until Payme production checkout is certified.
-- `CLICK_TEST_MODE` does not switch hosts; use Click’s merchant cabinet / test merchant as they document.
-- CI Playwright `e2e/payment-checkout.spec.ts` **mocks** the status page. It does **not** exercise live checkout or webhooks. Merchant GetStatement + sandbox checkout certification is still a human/operator step before taking real money.
+- Click checkout is always `https://my.click.uz/services/pay`. There is no Django `CLICK_TEST_MODE` flag (removed: Click’s Shop API does not expose a separate test host; use a Click test merchant).
+- Playwright `e2e/payment-checkout.spec.ts` covers the status-page UI shell (mocked) **and** an application-level checkout → Payme JSON-RPC → entitlement path against Django with **dummy** merchant keys. That is not Payme/Click sandbox certification.
 - Backend coverage lives under `backend/payments/tests/` (checkout, webhooks, statement, Click sign/amount, post-paid cancel, entitlement).
+
+### Operator runbook — real Payme / Click sandbox certification
+
+This environment has **no** live merchant credentials. Certification is **Blocked** until a human supplies them. Do not treat unit tests or the dummy-key Playwright spec as certification.
+
+**Prerequisites**
+
+1. Payme merchant cabinet access (test cash register) and Click test merchant.
+2. Public HTTPS origin (Payme/Click will not call `localhost`). Use a tunnel or staging host.
+3. Production-like env with `DEBUG=False` **or** a dedicated staging `.env` that still has real test keys.
+
+**Env vars (from this file)**
+
+```
+PAYMENTS_ENABLED=1
+BOOK_PRICE_TIYIN=<positive integer tiyin>
+PAYME_MERCHANT_ID=<cash-register id>
+PAYME_MERCHANT_KEY=<Merchant API password>
+PAYME_TEST_MODE=1
+CLICK_MERCHANT_ID=<id>
+CLICK_SERVICE_ID=<id>
+CLICK_SECRET_KEY=<secret>
+```
+
+With `DEBUG=False`, all five merchant fields are required at boot.
+
+**Register webhooks** (HTTPS):
+
+| Provider | Method | URL |
+|----------|--------|-----|
+| Payme Merchant API | POST JSON-RPC | `https://<host>/api/payments/payme/webhook/` |
+| Click Prepare | POST form/JSON | `https://<host>/api/payments/click/prepare/` |
+| Click Complete | POST form/JSON | `https://<host>/api/payments/click/complete/` |
+
+Payme auth is HTTP Basic login `Paycom`, password `PAYME_MERCHANT_KEY` (not `X-Auth`). Click auth is MD5 `sign_string` as documented above.
+
+**Payme checkout host:** `https://test.paycom.uz/{base64}` when `PAYME_TEST_MODE=1`; `https://checkout.paycom.uz/{base64}` when `0`.
+
+**Pass criteria (human)**
+
+1. SPA checkout for a licensed unpaid book returns `checkout_url`; browser lands on Payme test checkout.
+2. Complete a test payment; webhook `CheckPerformTransaction` → `CreateTransaction` → `PerformTransaction` results in `PaymentTransaction.status=paid` and `Purchase.status=paid`.
+3. Reader manifest and `/library/media/<slug>/pdf/` succeed for that user.
+4. `GetStatement` for the payment window returns the Payme `id` stored on `provider_transaction_id`.
+5. Repeat for Click: redirect to `my.click.uz`, Prepare then Complete, same entitlement.
+6. Cancel/refund paths: Payme post-paid cancel revokes; Click refund remains a manual admin `Purchase` → `refunded`.
+
+Record merchant ticket / certification IDs in your ops notes — they are not stored in this repo.
 
 ## Logging
 
 Webhook payloads are logged through `payments.logging_utils.redact_payload` (masks `sign_string`, keys, secrets). Do not log raw merchant keys.
+
+Licensed PDF/audio/text protection (what it is not): [`CONTENT_PROTECTION.md`](CONTENT_PROTECTION.md).
