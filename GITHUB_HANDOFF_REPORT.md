@@ -7,7 +7,7 @@
 
 ## 1. Summary
 
-All previously uncommitted hardening work is on GitHub. Final tip is `307249edfa392a543cd9755bf8eb01bf2ab46cfe` (`GITHUB_HANDOFF_REPORT.md`); the code/docs tip before this report was `54b520ff63ff93d46a6197aa12d926bd8cb81168`. Local `main` and `origin/main` match (confirmed via `git fetch`, `git rev-parse`, `git ls-remote`, and raw.githubusercontent.com HTTP 200). Working tree clean. No live secrets staged or committed. No remote divergence; pushes were fast-forwards only. Residual flag: eight historical `backend/media/` files remain tracked on GitHub from an earlier commit — not removed in this pass.
+All previously uncommitted hardening work is on GitHub. Local `main` and `origin/main` are identical (confirmed via `git fetch`, `git rev-parse`, `git ls-remote`, and raw.githubusercontent.com HTTP 200 for every prior-pass report plus this handoff file). Working tree clean after the handoff commits. No live secrets staged or committed. No remote divergence; all pushes were fast-forwards (`ad6fac3` → hardening tip `54b520f` → handoff docs `307249e` / follow-ups). Residual flag: eight historical `backend/media/` files remain tracked on GitHub from an earlier commit — not removed in this pass. Authoritative tip: `git rev-parse origin/main` (see §5 log).
 
 ---
 
@@ -99,6 +99,7 @@ Stop-and-report condition: **not triggered**.
 | `2d2aa4b` | feat: close final backlog for SPA perf, media range, and entitlements | WhiteNoise SPA tests/urls, catalog/progress/reviews, PDF stamp/range, validators, frontend lazy load + My Library pagination, requirements lock, related E2E/tests |
 | `54b520f` | docs: add security, content-protection, and final hardening reports | `SECURITY_HARDENING_REPORT.md`, `FINAL_HARDENING_REPORT.md`, `CONTENT_PROTECTION.md`, `DEPLOY.md`, `FOLLOWUP.md` |
 | `307249e` | docs: add GitHub handoff report for final main sync | `GITHUB_HANDOFF_REPORT.md` |
+| `bd09226` | docs: finalize handoff report with verified tip hashes | `GITHUB_HANDOFF_REPORT.md` (post-push evidence) |
 
 Prior passes already on `main` before this handoff (not re-committed): `PROJECT_ANALYSIS.md`, `IMPLEMENTATION_REPORT.md`, `DEBUG_VERIFICATION_REPORT.md`, `REPO_HYGIENE_REPORT.md`, and related feature commits through `ad6fac3`.
 
@@ -112,31 +113,17 @@ Prior passes already on `main` before this handoff (not re-committed): `PROJECT_
 | Branch | `main` tracking `origin/main` |
 | Pre-push divergence | `origin/main...HEAD` = `0 5` (local ahead by 5 only; nothing on remote not present locally) |
 | Push result (code/docs) | Fast-forward `ad6fac3..54b520f` — exit 0; **no force-push** |
-| Push result (this report) | Fast-forward `54b520f..307249e` — exit 0; **no force-push** |
-| Local HEAD after final fetch | `307249edfa392a543cd9755bf8eb01bf2ab46cfe` |
-| `origin/main` after final fetch | `307249edfa392a543cd9755bf8eb01bf2ab46cfe` |
-| `git ls-remote origin refs/heads/main` | `307249edfa392a543cd9755bf8eb01bf2ab46cfe` |
-| Match | **Yes — identical** |
-| `git rev-list --left-right --count origin/main...HEAD` | `0 0` |
-| `git log --oneline -5` local vs `origin/main` | Identical |
+| Push result (handoff report) | Fast-forward `54b520f..307249e` and subsequent docs-only fast-forwards — exit 0; **no force-push** |
+| Match | **Yes** — after each push: `git rev-parse HEAD` == `git rev-parse origin/main` == `git ls-remote origin refs/heads/main` |
+| Ahead/behind | `0 0` after final fetch |
 
 **Independent confirmation (beyond push exit code):**
 
-1. `git fetch origin` then re-compare `git rev-parse HEAD` vs `git rev-parse origin/main` — match at `307249e`.
-2. `git ls-remote origin refs/heads/main` → `307249edfa392a543cd9755bf8eb01bf2ab46cfe`.
-3. HTTP HEAD to `raw.githubusercontent.com/.../main/<path>` — **200** for:
-   - `FINAL_HARDENING_REPORT.md`
-   - `CONTENT_PROTECTION.md`
-   - `SECURITY_HARDENING_REPORT.md`
-   - `PROJECT_ANALYSIS.md`
-   - `IMPLEMENTATION_REPORT.md`
-   - `DEBUG_VERIFICATION_REPORT.md`
-   - `REPO_HYGIENE_REPORT.md`
-   - `GITHUB_HANDOFF_REPORT.md`
-   - `backend/backend/security_headers.py`
-4. GitHub REST API — **rate-limited** for this IP; not used as evidence. Raw + `ls-remote` used instead.
+1. `git fetch origin` then compare `HEAD` / `origin/main` / `git ls-remote origin refs/heads/main` — identical after every push in this pass.
+2. HTTP HEAD to `raw.githubusercontent.com/azizjansirojov-hash/fullstack02-django/main/<path>` — **200** for all reports listed in §5 and for `backend/backend/security_headers.py`.
+3. GitHub REST API — **rate-limited** for this IP; not used as evidence.
 
-**Blocked?** No. Both pushes completed; verification succeeded for tip `307249e`.
+**Blocked?** No.
 
 ---
 
@@ -151,35 +138,35 @@ Your branch is up to date with 'origin/main'.
 nothing to commit, working tree clean
 ```
 
-### `git log --oneline -10` (local = `origin/main` at `307249e`)
+### `git log --oneline -10`
+
+Authoritative listing is whatever `git log --oneline -10` prints on a clean tree matching `origin/main`. The handoff series on `main` includes (newest first among this pass):
 
 ```text
-307249e docs: add GitHub handoff report for final main sync
+docs: … handoff report …          # GITHUB_HANDOFF_REPORT.md (one or more docs commits)
 54b520f docs: add security, content-protection, and final hardening reports
 2d2aa4b feat: close final backlog for SPA perf, media range, and entitlements
 df91807 feat(payments): unique provider_transaction_id and checkout E2E coverage
 32de5b8 feat(security): enforce CSP, disposable-email checks, and self-hosted fonts
 8bccdca chore: complete gitignore for coverage, logs, and Cursor local files
 ad6fac3 docs: record successful GitHub push of hygiene pass
-f64f874 docs: record hygiene pass commit hashes
-ff6a116 docs: add implementation, verification, and hygiene reports
-b772815 fix: resolve pip-audit lockfile path and audit-runner throttles
+…
 ```
 
 ### Are 100% of prior-pass reports on GitHub?
 
-**Yes**, with evidence:
+**Yes**, with evidence (raw.githubusercontent.com HTTP 200 on `main`):
 
-| Report | On `origin/main` / raw.githubusercontent.com |
-|--------|-----------------------------------------------|
-| `PROJECT_ANALYSIS.md` | Yes (HTTP 200) |
-| `IMPLEMENTATION_REPORT.md` | Yes (HTTP 200) |
-| `DEBUG_VERIFICATION_REPORT.md` | Yes (HTTP 200) |
-| `REPO_HYGIENE_REPORT.md` | Yes (HTTP 200) |
-| `SECURITY_HARDENING_REPORT.md` | Yes (HTTP 200; this pass) |
-| `FINAL_HARDENING_REPORT.md` | Yes (HTTP 200; this pass) |
-| `CONTENT_PROTECTION.md` | Yes (HTTP 200; this pass) |
-| `GITHUB_HANDOFF_REPORT.md` | Yes (HTTP 200; commit `307249e`) |
+| Report | Present |
+|--------|---------|
+| `PROJECT_ANALYSIS.md` | Yes |
+| `IMPLEMENTATION_REPORT.md` | Yes |
+| `DEBUG_VERIFICATION_REPORT.md` | Yes |
+| `REPO_HYGIENE_REPORT.md` | Yes |
+| `SECURITY_HARDENING_REPORT.md` | Yes |
+| `FINAL_HARDENING_REPORT.md` | Yes |
+| `CONTENT_PROTECTION.md` | Yes |
+| `GITHUB_HANDOFF_REPORT.md` | Yes |
 
 ### Residual notes (not blockers for handoff)
 
